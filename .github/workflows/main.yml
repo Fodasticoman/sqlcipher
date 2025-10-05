@@ -23,9 +23,6 @@ jobs:
           install: >-
             git
             make
-            automake
-            autoconf
-            libtool
             mingw-w64-x86_64-gcc
             mingw-w64-x86_64-openssl
             mingw-w64-x86_64-zlib
@@ -38,23 +35,16 @@ jobs:
           cd sqlcipher
           git checkout ${{ github.event.inputs.tag }}
 
-          echo "🔹 Gerando script configure..."
-          autoreconf -fi
-
-          echo "🔹 Configurando build..."
-          ./configure \
-            --disable-tcl \
-            CFLAGS="-DSQLITE_HAS_CODEC -DSQLCIPHER_CRYPTO_OPENSSL -DSQLITE_TEMP_STORE=2" \
-            LDFLAGS="-lcrypto -lz"
-
-          echo "🔹 Compilando..."
-          make -j$(nproc)
+          echo "🔹 Compilando com Makefile.msc..."
+          make -f Makefile.msc \
+            USE_AMALGAMATION=1 \
+            OPT_FEATURE_FLAGS="-DSQLITE_HAS_CODEC -DSQLCIPHER_CRYPTO_OPENSSL -DSQLITE_TEMP_STORE=2" \
+            LTLIBS="-lcrypto -lz"
 
           echo "🔹 Preparando saída..."
           mkdir -p ../output
-          cp .libs/sqlcipher.exe ../output/ || true
-          cp .libs/libsqlcipher.dll ../output/ || true
-          cp .libs/libsqlcipher.a ../output/ || true
+          cp sqlite3.exe ../output/ || true
+          cp sqlite3.dll ../output/ || true
           cp sqlite3.h ../output/
           cp sqlite3ext.h ../output/
 
