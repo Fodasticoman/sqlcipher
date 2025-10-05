@@ -29,6 +29,7 @@ jobs:
             mingw-w64-x86_64-gcc
             mingw-w64-x86_64-openssl
             mingw-w64-x86_64-zlib
+            tcl
 
       - name: 🔹 Build SQLCipher (modo autoconf)
         shell: msys2 {0}
@@ -40,7 +41,7 @@ jobs:
 
           echo "🔹 Gerando configure..."
           ./configure --disable-tcl \
-            CFLAGS="-DSQLITE_HAS_CODEC -DSQLCIPHER_CRYPTO_OPENSSL -DSQLITE_TEMP_STORE=2" \
+            CFLAGS=-DSQLITE_HAS_CODEC\ -DSQLCIPHER_CRYPTO_OPENSSL\ -DSQLITE_TEMP_STORE=2 \
             LDFLAGS="-lcrypto -lz"
 
           echo "🔹 Compilando..."
@@ -49,6 +50,8 @@ jobs:
           echo "🔹 Preparando saída..."
           mkdir -p ../output
           cp .libs/sqlcipher ../output/sqlite3.exe || true
+          cp .libs/libsqlcipher.dll ../output/ || true
+          cp .libs/libsqlcipher.a ../output/ || true
           cp sqlite3.h ../output/
           cp sqlite3ext.h ../output/
 
