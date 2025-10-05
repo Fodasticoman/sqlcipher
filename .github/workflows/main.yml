@@ -1,0 +1,77 @@
+name: Build SQLCipher (Windows MinGW-w64)
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'SQLCipher tag (ex: v4.10.0)'
+        required: true
+        default: 'v4.10.0'
+
+jobs:
+  build-win:
+    runs-on: windows-latest
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    - name: Install MSYS2 and update
+      uses: msys2/setup-msys2@v2
+      with:
+        update: true
+        install: >
+          mingw-w64-x86_64-toolchain
+          mingw-w64-x86_64-openssl
+          mingw-w64-x86_64-pkg-config
+          mingw-w64-x86_64-tcl
+          make
+          git
+
+    - name: Set MSYS2 environment (MinGW64)
+      shell: bash
+      run: |
+        export PATH="/c/msys64/mingw64/bin:$PATH"
+        pacman -Sy --noconfirm
+
+    - name: Clone sqlcipher at requested tag
+      shell: bash
+      run: |
+        TAG=${{ github.event.inputs.tag }}
+        git clone https://github.com/sqlcipher/sqlcipher.git sqlcipher-src
+        cd sqlcipher-src
+        git fetch --all --tags
+        git checkout $TAG
+        git submodule update --init --recursive || true
+        pwd
+        ls -la
+
+    - name: Configure & build (MinGW64)
+      shell: bash
+      run: |
+        cd sqlcipher-src
+        ./configure --prefix=/mingw64 --enable-shared --enable-tempstore=yes CFLAGS="-DSQLITE_HAS_CODEC -O2" LDFLAGS="-L/mingw64/lib -lcrypto -lssl"
+        make -j$(nproc)
+        make install DESTDIR=$PWD/install
+
+    - name: Collect artifacts
+      shell: bash
+      run: |
+        cd sqlcipher-src
+        mkdir -p artifacts
+        # binários
+        cp /mingw64/bin/sqlcipher artifacts/ || true
+        cp /mingw64/bin/libsqlcipher-*.dll artifacts/ || true
+        cp /mingw64/bin/sqlite3.dll artifacts/ || true
+        # libs e includes
+        cp -r /mingw64/lib artifacts/lib || true
+        cp -r /mingw64/include artifacts/include || true
+        ls -la artifacts
+
+    - name: Upload compiled artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: sqlcipher-windows-artifacts
+        path: sqlcipher-src/artifacts
