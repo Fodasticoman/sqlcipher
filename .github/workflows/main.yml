@@ -13,24 +13,21 @@ jobs:
     runs-on: windows-latest
 
     steps:
-      - name: Checkout
+      - name: 🔹 Checkout repositório
         uses: actions/checkout@v4
 
-      - name: Setup MSYS2
+      - name: 🔹 Instalar MSYS2 e dependências
         uses: msys2/setup-msys2@v2
         with:
           update: true
-          msystem: MINGW64
-          install: >
+          install: >-
             git
             make
-            zip
             mingw-w64-x86_64-gcc
-            mingw-w64-x86_64-tcl
             mingw-w64-x86_64-openssl
             mingw-w64-x86_64-zlib
 
-      - name: Build SQLCipher
+      - name: 🔹 Build SQLCipher
         shell: msys2 {0}
         run: |
           echo "🔹 Baixando SQLCipher versão ${{ github.event.inputs.tag }}"
@@ -39,36 +36,4 @@ jobs:
           git checkout ${{ github.event.inputs.tag }}
 
           echo "🔹 Configurando build..."
-          ./configure \
-            --disable-tcl \
-            CFLAGS="-DSQLITE_HAS_CODEC -DSQLCIPHER_CRYPTO_OPENSSL -DSQLITE_EXTRA_INIT=sqlcipher_extra_init -DSQLITE_EXTRA_SHUTDOWN=sqlcipher_extra_shutdown -DSQLITE_TEMP_STORE=2" \
-            LDFLAGS="-lcrypto -lz"
-
-          echo "🔹 Compilando..."
-          make -j$(nproc)
-
-          echo "🔹 Preparando saída..."
-          mkdir -p ../output
-          cp -f .libs/sqlcipher.exe ../output/ || true
-          cp -f .libs/libsqlcipher.dll ../output/ || true
-          cp -f sqlite3.h ../output/
-          cp -f sqlite3ext.h ../output/
-          echo "🔹 Conteúdo gerado:"
-          ls -la ../output || true
-
-      - name: Zip build output
-        run: |
-          echo "🔹 Compactando binários..."
-          if (Test-Path "output") {
-            Compress-Archive -Path output\* -DestinationPath SQLCipher-${{ github.event.inputs.tag }}-Windows.zip
-          } else {
-            Write-Host "⚠️ Pasta 'output' não encontrada!"
-            Get-ChildItem -Recurse | Select-String "" | Out-Host
-            exit 1
-          }
-
-      - name: Upload build artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: SQLCipher-${{ github.event.inputs.tag }}-Windows
-          path: SQLCipher-${{ github.event.inputs.tag }}-Windows.zip
+          ./configu
