@@ -24,10 +24,10 @@ jobs:
           install: >
             git
             make
+            zip
             mingw-w64-x86_64-gcc
             mingw-w64-x86_64-tcl
             mingw-w64-x86_64-openssl
-            zip
 
       - name: Build SQLCipher
         shell: msys2 {0}
@@ -38,25 +38,5 @@ jobs:
           git checkout ${{ github.event.inputs.tag }}
 
           echo "🔹 Configurando build..."
-          ./configure --enable-tempstore=yes CFLAGS="-DSQLITE_HAS_CODEC" LDFLAGS="-lcrypto"
-
-          echo "🔹 Compilando..."
-          make -j$(nproc)
-
-          echo "🔹 Preparando saída..."
-          mkdir -p ../output
-          cp .libs/sqlcipher.exe ../output/
-          cp .libs/libsqlcipher.dll ../output/
-          cp sqlite3.h ../output/
-          cp sqlite3ext.h ../output/
-
-      - name: Create ZIP file
-        run: |
-          cd output
-          powershell Compress-Archive -Path * -DestinationPath ../SQLCipher-${{ github.event.inputs.tag }}-Windows.zip
-
-      - name: Upload build artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: SQLCipher-${{ github.event.inputs.tag }}-Windows
-          path: SQLCipher-${{ github.event.inputs.tag }}-Windows.zip
+          ./configure \
+            --disable-tcl \
