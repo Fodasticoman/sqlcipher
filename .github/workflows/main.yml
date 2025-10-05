@@ -40,3 +40,34 @@ jobs:
           echo "🔹 Configurando build..."
           ./configure \
             --disable-tcl \
+            CFLAGS="-DSQLITE_HAS_CODEC -DSQLCIPHER_CRYPTO_OPENSSL" \
+            LDFLAGS="-lcrypto"
+
+          echo "🔹 Compilando..."
+          make -j$(nproc)
+
+          echo "🔹 Preparando saída..."
+          mkdir -p ../output
+          cp -f .libs/sqlcipher.exe ../output/ || true
+          cp -f .libs/libsqlcipher.dll ../output/ || true
+          cp -f sqlite3.h ../output/
+          cp -f sqlite3ext.h ../output/
+
+          echo "🔹 Verificando conteúdo da pasta output:"
+          ls -la ../output || true
+
+      - name: Zip build output
+        run: |
+          echo "🔹 Compactando binários..."
+          if (Test-Path "output") {
+            Compress-Archive -Path output\* -DestinationPath SQLCipher-${{ github.event.inputs.tag }}-Windows.zip
+          } else {
+            Write-Host "⚠️ Pasta 'output' não encontrada!"
+            exit 1
+          }
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: SQLCipher-${{ github.event.inputs.tag }}-Windows
+          path: SQLCipher-${{ github.event.inputs.tag }}-Windows.zip
