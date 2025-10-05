@@ -11,56 +11,31 @@ on:
 jobs:
   build-win:
     runs-on: windows-latest
-
     steps:
-      - name: 🔹 Checkout repositório
+      - name: 🔹 Checkout
         uses: actions/checkout@v4
 
-      - name: 🔹 Instalar MSYS2 e dependências
-        uses: msys2/setup-msys2@v2
-        with:
-          update: true
-          install: >-
-            git
-            make
-            automake
-            autoconf
-            libtool
-            mingw-w64-x86_64-gcc
-            mingw-w64-x86_64-openssl
-            mingw-w64-x86_64-zlib
-            tcl
-
-      - name: 🔹 Build SQLCipher (modo autoconf)
-        shell: msys2 {0}
+      - name: 🔹 Instalar dependências
         run: |
-          echo "🔹 Baixando SQLCipher versão ${{ github.event.inputs.tag }}"
+          choco install -y msys2
+          C:\msys64\usr\bin\bash -lc "pacman -Syu --noconfirm && pacman -S --noconfirm git mingw-w64-x86_64-gcc mingw-w64-x86_64-openssl make zlib-devel"
+
+      - name: 🔹 Baixar SQLCipher versão ${{ github.event.inputs.tag }}
+        run: |
           git clone https://github.com/sqlcipher/sqlcipher.git
           cd sqlcipher
           git checkout ${{ github.event.inputs.tag }}
 
-          echo "🔹 Gerando configure..."
-          ./configure --disable-tcl \
-            CFLAGS=-DSQLITE_HAS_CODEC\ -DSQLCIPHER_CRYPTO_OPENSSL\ -DSQLITE_TEMP_STORE=2 \
-            LDFLAGS="-lcrypto -lz"
-
-          echo "🔹 Compilando..."
+      - name: 🔹 Compilar SQLCipher
+        shell: bash
+        run: |
+          cd sqlcipher
+          ./configure --disable-tcl --enable-tempstore=2 --enable-load-extension --with-crypto-lib=openssl CFLAGS="-DSQLITE_HAS_CODEC -DSQLCIPHER_CRYPTO_OPENSSL -DSQLITE_TEMP_STORE=2 -DSQLITE_EXTRA_INIT=sqlcipher_extra_init -DSQLITE_EXTRA_SHUTDOWN=sqlcipher_extra_shutdown"
           make -j$(nproc)
 
-          echo "🔹 Preparando saída..."
-          mkdir -p ../output
-          cp .libs/sqlcipher ../output/sqlite3.exe || true
-          cp .libs/libsqlcipher.dll ../output/ || true
-          cp .libs/libsqlcipher.a ../output/ || true
-          cp sqlite3.h ../output/
-          cp sqlite3ext.h ../output/
-
-      - name: 🔹 Criar arquivo ZIP com os binários
+      - name: 📦 Empacotar artefatos
         run: |
-          powershell Compress-Archive -Path output/* -DestinationPath sqlcipher-windows.zip
-
-      - name: 🔹 Publicar artefato
-        uses: actions/upload-artifact@v4
-        with:
-          name: sqlcipher-windows
-          path: sqlcipher-windows.zip
+          mkdir -p build
+          cp sqlcipher/sqlite3.exe build/sqlcipher.exe || true
+          cp sqlcipher/.libs/libsqlcipher.dll build/sqlcipher.dll || true
+          cp sqlcipher/sqli
