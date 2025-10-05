@@ -28,6 +28,7 @@ jobs:
             mingw-w64-x86_64-gcc
             mingw-w64-x86_64-tcl
             mingw-w64-x86_64-openssl
+            mingw-w64-x86_64-zlib
 
       - name: Build SQLCipher
         shell: msys2 {0}
@@ -40,8 +41,8 @@ jobs:
           echo "🔹 Configurando build..."
           ./configure \
             --disable-tcl \
-            CFLAGS="-DSQLITE_HAS_CODEC -DSQLCIPHER_CRYPTO_OPENSSL" \
-            LDFLAGS="-lcrypto"
+            CFLAGS="-DSQLITE_HAS_CODEC -DSQLCIPHER_CRYPTO_OPENSSL -DSQLITE_EXTRA_INIT=sqlcipher_extra_init -DSQLITE_EXTRA_SHUTDOWN=sqlcipher_extra_shutdown -DSQLITE_TEMP_STORE=2" \
+            LDFLAGS="-lcrypto -lz"
 
           echo "🔹 Compilando..."
           make -j$(nproc)
@@ -52,8 +53,7 @@ jobs:
           cp -f .libs/libsqlcipher.dll ../output/ || true
           cp -f sqlite3.h ../output/
           cp -f sqlite3ext.h ../output/
-
-          echo "🔹 Verificando conteúdo da pasta output:"
+          echo "🔹 Conteúdo gerado:"
           ls -la ../output || true
 
       - name: Zip build output
@@ -63,6 +63,7 @@ jobs:
             Compress-Archive -Path output\* -DestinationPath SQLCipher-${{ github.event.inputs.tag }}-Windows.zip
           } else {
             Write-Host "⚠️ Pasta 'output' não encontrada!"
+            Get-ChildItem -Recurse | Select-String "" | Out-Host
             exit 1
           }
 
