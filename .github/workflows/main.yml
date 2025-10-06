@@ -16,22 +16,29 @@ jobs:
     - name: Checkout
       uses: actions/checkout@v4
 
-    - name: 🔹 Baixando SQLCipher
+    - name: 🧰 Configurar ambiente MSYS2 com MinGW e OpenSSL
+      uses: msys2/setup-msys2@v2
+      with:
+        update: true
+        install: >-
+          base-devel
+          mingw-w64-x86_64-toolchain
+          mingw-w64-x86_64-openssl
+          make
+        msystem: MINGW64
+
+    - name: 🔹 Baixar SQLCipher
+      shell: msys2 {0}
       run: |
         git clone https://github.com/sqlcipher/sqlcipher.git
         cd sqlcipher
         git checkout ${{ github.event.inputs.tag }}
 
-    - name: 🧰 Instalar dependências MinGW e OpenSSL
-      shell: bash
-      run: |
-        pacman -Sy --noconfirm mingw-w64-x86_64-toolchain mingw-w64-x86_64-openssl make
-
-    - name: ⚙️ Configurar e compilar SQLCipher
-      shell: bash
+    - name: ⚙️ Compilar SQLCipher
+      shell: msys2 {0}
       run: |
         cd sqlcipher
-        echo "🔹 Configurando build..."
+        echo "🔹 Configurando compilação..."
         ./configure \
           --disable-tcl \
           --enable-threadsafe \
@@ -42,11 +49,11 @@ jobs:
         echo "🔹 Compilando..."
         make -j4
 
-    - name: 📦 Empacotar arquivos gerados
-      shell: bash
+    - name: 📦 Empacotar arquivos
+      shell: msys2 {0}
       run: |
         mkdir -p build/sqlcipher
-        cp sqlcipher/sqlite3.exe build/sqlcipher/
+        cp sqlcipher/sqlite3.exe build/sqlcipher/ || true
         cp sqlcipher/.libs/libsqlcipher*.dll build/sqlcipher/ || true
         cd build
         7z a sqlcipher-windows.zip sqlcipher
