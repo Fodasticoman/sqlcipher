@@ -46,7 +46,11 @@ jobs:
         ./configure \
           --disable-tcl \
           --enable-threadsafe \
-          CFLAGS="-DSQLITE_HAS_CODEC -DSQLCIPHER_CRYPTO_OPENSSL -DSQLITE_THREADSAFE=1 -DSQLITE_TEMP_STORE=2 -I/mingw64/include" \
+          CFLAGS="-DSQLITE_HAS_CODEC -DSQLCIPHER_CRYPTO_OPENSSL \
+          -DSQLITE_THREADSAFE=1 -DSQLITE_TEMP_STORE=2 \
+          -DSQLITE_EXTRA_INIT=sqlcipher_extra_init \
+          -DSQLITE_EXTRA_SHUTDOWN=sqlcipher_extra_shutdown \
+          -I/mingw64/include" \
           LDFLAGS="-L/mingw64/lib -lcrypto -lssl"
 
         echo "🔹 Compilando..."
