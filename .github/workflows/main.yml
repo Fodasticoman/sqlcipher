@@ -46,8 +46,7 @@ jobs:
         ./configure \
           --disable-tcl \
           --enable-threadsafe \
-          --enable-tempstore=yes \
-          CFLAGS="-DSQLITE_HAS_CODEC -DSQLCIPHER_CRYPTO_OPENSSL -DSQLITE_THREADSAFE=1 -I/mingw64/include" \
+          CFLAGS="-DSQLITE_HAS_CODEC -DSQLCIPHER_CRYPTO_OPENSSL -DSQLITE_THREADSAFE=1 -DSQLITE_TEMP_STORE=2 -I/mingw64/include" \
           LDFLAGS="-L/mingw64/lib -lcrypto -lssl"
 
         echo "🔹 Compilando..."
@@ -59,6 +58,8 @@ jobs:
         mkdir -p build/sqlcipher
         cp sqlcipher/sqlite3.exe build/sqlcipher/ || true
         cp sqlcipher/.libs/libsqlcipher*.dll build/sqlcipher/ || true
+        cp sqlcipher/sqlite3.h build/sqlcipher/ || true
+        cp sqlcipher/sqlite3ext.h build/sqlcipher/ || true
         cd build
         7z a sqlcipher-windows.zip sqlcipher
 
