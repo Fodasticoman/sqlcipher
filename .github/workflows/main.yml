@@ -13,23 +13,27 @@ jobs:
     runs-on: windows-latest
 
     steps:
-    - name: Checkout
+    - name: Checkout (repositório atual)
       uses: actions/checkout@v4
 
-    - name: 🧰 Configurar ambiente MSYS2 com MinGW e OpenSSL
+    - name: 🧰 Configurar ambiente MSYS2 com Git, MinGW e OpenSSL
       uses: msys2/setup-msys2@v2
       with:
         update: true
+        msystem: MINGW64
         install: >-
+          git
           base-devel
           mingw-w64-x86_64-toolchain
           mingw-w64-x86_64-openssl
           make
-        msystem: MINGW64
+          zip
+          p7zip
 
     - name: 🔹 Baixar SQLCipher
       shell: msys2 {0}
       run: |
+        echo "🔹 Clonando SQLCipher..."
         git clone https://github.com/sqlcipher/sqlcipher.git
         cd sqlcipher
         git checkout ${{ github.event.inputs.tag }}
@@ -49,7 +53,7 @@ jobs:
         echo "🔹 Compilando..."
         make -j4
 
-    - name: 📦 Empacotar arquivos
+    - name: 📦 Empacotar binários
       shell: msys2 {0}
       run: |
         mkdir -p build/sqlcipher
@@ -58,7 +62,7 @@ jobs:
         cd build
         7z a sqlcipher-windows.zip sqlcipher
 
-    - name: ⬆️ Publicar artefato
+    - name: ⬆️ Publicar artefato compilado
       uses: actions/upload-artifact@v4
       with:
         name: sqlcipher-windows
