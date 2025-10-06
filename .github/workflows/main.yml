@@ -13,43 +13,46 @@ jobs:
     runs-on: windows-latest
 
     steps:
-      - name: 🔹 Checkout
-        uses: actions/checkout@v4
+    - name: Checkout
+      uses: actions/checkout@v4
 
-      - name: 🔹 Instalar dependências
-        run: |
-          choco install -y msys2
-          C:\msys64\usr\bin\bash -lc "pacman -Syu --noconfirm && pacman -S --noconfirm git make mingw-w64-x86_64-gcc mingw-w64-x86_64-openssl zlib-devel"
+    - name: 🔹 Baixando SQLCipher
+      run: |
+        git clone https://github.com/sqlcipher/sqlcipher.git
+        cd sqlcipher
+        git checkout ${{ github.event.inputs.tag }}
 
-      - name: 🔹 Baixar SQLCipher versão ${{ github.event.inputs.tag }}
-        run: |
-          git clone https://github.com/sqlcipher/sqlcipher.git
-          cd sqlcipher
-          git checkout ${{ github.event.inputs.tag }}
+    - name: 🧰 Instalar dependências MinGW e OpenSSL
+      shell: bash
+      run: |
+        pacman -Sy --noconfirm mingw-w64-x86_64-toolchain mingw-w64-x86_64-openssl make
 
-      - name: 🔹 Compilar SQLCipher
-        shell: bash
-        run: |
-          cd sqlcipher
-          ./configure \
-            --disable-tcl \
-            --disable-math \
-            --disable-load-extension \
-            --out-implib=none \
-            CFLAGS="-DSQLITE_HAS_CODEC -DSQLCIPHER_CRYPTO_OPENSSL -DSQLITE_TEMP_STORE=2 -DSQLITE_EXTRA_INIT=sqlcipher_extra_init -DSQLITE_EXTRA_SHUTDOWN=sqlcipher_extra_shutdown" \
-            LDFLAGS="-lcrypto -lssl"
-          make -j$(nproc)
+    - name: ⚙️ Configurar e compilar SQLCipher
+      shell: bash
+      run: |
+        cd sqlcipher
+        echo "🔹 Configurando build..."
+        ./configure \
+          --disable-tcl \
+          --enable-threadsafe \
+          --enable-tempstore=yes \
+          CFLAGS="-DSQLITE_HAS_CODEC -DSQLCIPHER_CRYPTO_OPENSSL -DSQLITE_THREADSAFE=1 -I/mingw64/include" \
+          LDFLAGS="-L/mingw64/lib -lcrypto -lssl"
 
-      - name: 📦 Empacotar artefatos
-        run: |
-          mkdir -p build
-          cp sqlcipher/sqlite3.exe build/sqlcipher.exe || true
-          cp sqlcipher/.libs/libsqlcipher.dll build/sqlcipher.dll || true
-          cp sqlcipher/sqlite3.h build/ || true
-          cp sqlcipher/sqlite3ext.h build/ || true
+        echo "🔹 Compilando..."
+        make -j4
 
-      - name: 💾 Upload de artefatos
-        uses: actions/upload-artifact@v4
-        with:
-          name: sqlcipher-windows
-          path: build
+    - name: 📦 Empacotar arquivos gerados
+      shell: bash
+      run: |
+        mkdir -p build/sqlcipher
+        cp sqlcipher/sqlite3.exe build/sqlcipher/
+        cp sqlcipher/.libs/libsqlcipher*.dll build/sqlcipher/ || true
+        cd build
+        7z a sqlcipher-windows.zip sqlcipher
+
+    - name: ⬆️ Publicar artefato
+      uses: actions/upload-artifact@v4
+      with:
+        name: sqlcipher-windows
+        path: build/sqlcipher-windows.zip
