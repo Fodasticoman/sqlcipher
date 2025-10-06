@@ -13,7 +13,7 @@ jobs:
     runs-on: windows-latest
 
     steps:
-    - name: Checkout
+    - name: 📦 Checkout
       uses: actions/checkout@v4
 
     - name: 🧰 Instalar ambiente MSYS2 + dependências
@@ -33,14 +33,14 @@ jobs:
     - name: 🔹 Clonar SQLCipher
       shell: msys2 {0}
       run: |
-        git clone https://github.com/sqlcipher/sqlcipher.git
-        cd sqlcipher
+        git clone https://github.com/sqlcipher/sqlcipher.git /tmp/sqlcipher
+        cd /tmp/sqlcipher
         git checkout ${{ github.event.inputs.tag }}
 
     - name: ⚙️ Compilar SQLCipher (EXE + DLL)
       shell: msys2 {0}
       run: |
-        cd /d/a/sqlcipher/sqlcipher/sqlcipher
+        cd /tmp/sqlcipher
 
         echo "🔹 Configurando compilação..."
         ./configure \
@@ -55,26 +55,22 @@ jobs:
           -I/mingw64/include" \
           LDFLAGS="-L/mingw64/lib -lcrypto -lssl -lz"
 
-        echo "🔹 Corrigindo caminhos para formato POSIX..."
-        sed -i 's|D:/a/|/d/a/|g' Makefile
-
         echo "🔹 Compilando sqlite3.o..."
-        export PATH="/mingw64/bin:$PATH"
-        make -j4 sqlite3.o || exit 1
+        make -j4 sqlite3.o
 
-        echo "🔹 Gerando DLL..."
+        echo "🔹 Gerando libsqlcipher.dll..."
         gcc -shared -o libsqlcipher.dll sqlite3.o -L/mingw64/lib -lcrypto -lssl -lz
 
-        echo "✅ Build finalizado com sucesso!"
+        echo "✅ Build concluído!"
 
     - name: 📦 Empacotar binários
       shell: msys2 {0}
       run: |
         mkdir -p build/sqlcipher
-        cp sqlcipher/sqlite3.exe build/sqlcipher/ || true
-        cp sqlcipher/libsqlcipher.dll build/sqlcipher/ || true
-        cp sqlcipher/sqlite3.h build/sqlcipher/ || true
-        cp sqlcipher/sqlite3ext.h build/sqlcipher/ || true
+        cp /tmp/sqlcipher/sqlite3.exe build/sqlcipher/ || true
+        cp /tmp/sqlcipher/libsqlcipher.dll build/sqlcipher/ || true
+        cp /tmp/sqlcipher/sqlite3.h build/sqlcipher/ || true
+        cp /tmp/sqlcipher/sqlite3ext.h build/sqlcipher/ || true
         cd build
         7z a sqlcipher-windows.zip sqlcipher
 
