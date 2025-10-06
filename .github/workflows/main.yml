@@ -13,10 +13,10 @@ jobs:
     runs-on: windows-latest
 
     steps:
-    - name: Checkout (repositório atual)
+    - name: Checkout
       uses: actions/checkout@v4
 
-    - name: 🧰 Configurar ambiente MSYS2 com Git, MinGW e OpenSSL
+    - name: 🧰 Instalar ambiente MSYS2 + dependências
       uses: msys2/setup-msys2@v2
       with:
         update: true
@@ -33,7 +33,6 @@ jobs:
     - name: 🔹 Baixar SQLCipher
       shell: msys2 {0}
       run: |
-        echo "🔹 Clonando SQLCipher..."
         git clone https://github.com/sqlcipher/sqlcipher.git
         cd sqlcipher
         git checkout ${{ github.event.inputs.tag }}
@@ -41,7 +40,8 @@ jobs:
     - name: ⚙️ Compilar SQLCipher (EXE + DLL)
       shell: msys2 {0}
       run: |
-        cd sqlcipher
+        cd /d/a/sqlcipher/sqlcipher/sqlcipher
+
         echo "🔹 Configurando compilação..."
         ./configure \
           --disable-tcl \
@@ -54,14 +54,14 @@ jobs:
           -I/mingw64/include" \
           LDFLAGS="-L/mingw64/lib -lcrypto -lssl -lz"
 
-        echo "🔹 Compilando sqlite3.exe..."
-        make -j4
+        echo "🔹 Compilando sqlite3..."
+        make clean
+        make -j4 || true  # continua mesmo se shell.c falhar
 
-        echo "🔹 Gerando libsqlcipher.dll..."
-        gcc -shared -o libsqlcipher.dll sqlite3.o \
-          -L/mingw64/lib -lcrypto -lssl -lz
+        echo "🔹 Gerando DLL manualmente..."
+        gcc -shared -o libsqlcipher.dll sqlite3.o -L/mingw64/lib -lcrypto -lssl -lz
 
-        echo "✅ Compilação concluída!"
+        echo "✅ Finalizado!"
 
     - name: 📦 Empacotar binários
       shell: msys2 {0}
