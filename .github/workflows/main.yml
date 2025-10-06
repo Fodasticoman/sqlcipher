@@ -38,7 +38,7 @@ jobs:
         cd sqlcipher
         git checkout ${{ github.event.inputs.tag }}
 
-    - name: ⚙️ Compilar SQLCipher
+    - name: ⚙️ Compilar SQLCipher (EXE + DLL)
       shell: msys2 {0}
       run: |
         cd sqlcipher
@@ -50,18 +50,25 @@ jobs:
           -DSQLITE_THREADSAFE=1 -DSQLITE_TEMP_STORE=2 \
           -DSQLITE_EXTRA_INIT=sqlcipher_extra_init \
           -DSQLITE_EXTRA_SHUTDOWN=sqlcipher_extra_shutdown \
+          -DSQLITE_API=__declspec(dllexport) \
           -I/mingw64/include" \
-          LDFLAGS="-L/mingw64/lib -lcrypto -lssl"
+          LDFLAGS="-L/mingw64/lib -lcrypto -lssl -lz"
 
-        echo "🔹 Compilando..."
+        echo "🔹 Compilando sqlite3.exe..."
         make -j4
+
+        echo "🔹 Gerando libsqlcipher.dll..."
+        gcc -shared -o libsqlcipher.dll sqlite3.o \
+          -L/mingw64/lib -lcrypto -lssl -lz
+
+        echo "✅ Compilação concluída!"
 
     - name: 📦 Empacotar binários
       shell: msys2 {0}
       run: |
         mkdir -p build/sqlcipher
         cp sqlcipher/sqlite3.exe build/sqlcipher/ || true
-        cp sqlcipher/.libs/libsqlcipher*.dll build/sqlcipher/ || true
+        cp sqlcipher/libsqlcipher.dll build/sqlcipher/ || true
         cp sqlcipher/sqlite3.h build/sqlcipher/ || true
         cp sqlcipher/sqlite3ext.h build/sqlcipher/ || true
         cd build
