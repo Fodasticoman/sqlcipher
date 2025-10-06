@@ -16,7 +16,7 @@ jobs:
     - name: 📦 Checkout
       uses: actions/checkout@v4
 
-    - name: 🧰 Instalar ambiente MSYS2 + dependências
+    - name: 🧰 Instalar MSYS2 e dependências
       uses: msys2/setup-msys2@v2
       with:
         update: true
@@ -30,17 +30,18 @@ jobs:
           zip
           p7zip
 
-    - name: 🔹 Clonar SQLCipher
+    - name: 🔹 Clonar SQLCipher para diretório seguro
       shell: msys2 {0}
       run: |
-        git clone https://github.com/sqlcipher/sqlcipher.git /tmp/sqlcipher
-        cd /tmp/sqlcipher
+        mkdir -p /c/sqlcipher
+        git clone https://github.com/sqlcipher/sqlcipher.git /c/sqlcipher
+        cd /c/sqlcipher
         git checkout ${{ github.event.inputs.tag }}
 
-    - name: ⚙️ Compilar SQLCipher (EXE + DLL)
+    - name: ⚙️ Compilar SQLCipher (DLL + EXE)
       shell: msys2 {0}
       run: |
-        cd /tmp/sqlcipher
+        cd /c/sqlcipher
 
         echo "🔹 Configurando compilação..."
         ./configure \
@@ -67,10 +68,10 @@ jobs:
       shell: msys2 {0}
       run: |
         mkdir -p build/sqlcipher
-        cp /tmp/sqlcipher/sqlite3.exe build/sqlcipher/ || true
-        cp /tmp/sqlcipher/libsqlcipher.dll build/sqlcipher/ || true
-        cp /tmp/sqlcipher/sqlite3.h build/sqlcipher/ || true
-        cp /tmp/sqlcipher/sqlite3ext.h build/sqlcipher/ || true
+        cp /c/sqlcipher/sqlite3.exe build/sqlcipher/ || true
+        cp /c/sqlcipher/libsqlcipher.dll build/sqlcipher/ || true
+        cp /c/sqlcipher/sqlite3.h build/sqlcipher/ || true
+        cp /c/sqlcipher/sqlite3ext.h build/sqlcipher/ || true
         cd build
         7z a sqlcipher-windows.zip sqlcipher
 
