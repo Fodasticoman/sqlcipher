@@ -55,17 +55,14 @@ jobs:
           -I/mingw64/include" \
           LDFLAGS="-L/mingw64/lib -lcrypto -lssl -lz"
 
-        echo "🔹 Compilando sqlite3 (escape fix)..."
+        echo "🔹 Corrigindo caminhos para formato POSIX..."
+        sed -i 's|D:/a/|/d/a/|g' Makefile
+
+        echo "🔹 Compilando sqlite3.o..."
         export PATH="/mingw64/bin:$PATH"
-        make clean
-        make sqlite3.o || true
+        make -j4 sqlite3.o || exit 1
 
-        if [ ! -f sqlite3.o ]; then
-          echo "❌ Falhou ao gerar sqlite3.o"
-          exit 1
-        fi
-
-        echo "🔹 Gerando DLL manualmente..."
+        echo "🔹 Gerando DLL..."
         gcc -shared -o libsqlcipher.dll sqlite3.o -L/mingw64/lib -lcrypto -lssl -lz
 
         echo "✅ Build finalizado com sucesso!"
