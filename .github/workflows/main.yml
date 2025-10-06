@@ -19,7 +19,7 @@ jobs:
       - name: 🔹 Instalar dependências
         run: |
           choco install -y msys2
-          C:\msys64\usr\bin\bash -lc "pacman -Syu --noconfirm && pacman -S --noconfirm git mingw-w64-x86_64-gcc mingw-w64-x86_64-openssl make zlib-devel"
+          C:\msys64\usr\bin\bash -lc "pacman -Syu --noconfirm && pacman -S --noconfirm git make mingw-w64-x86_64-gcc mingw-w64-x86_64-openssl zlib-devel"
 
       - name: 🔹 Baixar SQLCipher versão ${{ github.event.inputs.tag }}
         run: |
@@ -34,6 +34,8 @@ jobs:
           ./configure \
             --disable-tcl \
             --disable-math \
+            --disable-load-extension \
+            --out-implib=none \
             CFLAGS="-DSQLITE_HAS_CODEC -DSQLCIPHER_CRYPTO_OPENSSL -DSQLITE_TEMP_STORE=2 -DSQLITE_EXTRA_INIT=sqlcipher_extra_init -DSQLITE_EXTRA_SHUTDOWN=sqlcipher_extra_shutdown" \
             LDFLAGS="-lcrypto -lssl"
           make -j$(nproc)
