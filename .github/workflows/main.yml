@@ -11,6 +11,7 @@ on:
 jobs:
   build-win:
     runs-on: windows-latest
+
     steps:
       - name: 🔹 Checkout
         uses: actions/checkout@v4
@@ -30,7 +31,11 @@ jobs:
         shell: bash
         run: |
           cd sqlcipher
-          ./configure --disable-tcl CFLAGS="-DSQLITE_HAS_CODEC -DSQLCIPHER_CRYPTO_OPENSSL -DSQLITE_TEMP_STORE=2 -DSQLITE_EXTRA_INIT=sqlcipher_extra_init -DSQLITE_EXTRA_SHUTDOWN=sqlcipher_extra_shutdown" LDFLAGS="-lcrypto -lssl"
+          ./configure \
+            --disable-tcl \
+            --disable-math \
+            CFLAGS="-DSQLITE_HAS_CODEC -DSQLCIPHER_CRYPTO_OPENSSL -DSQLITE_TEMP_STORE=2 -DSQLITE_EXTRA_INIT=sqlcipher_extra_init -DSQLITE_EXTRA_SHUTDOWN=sqlcipher_extra_shutdown" \
+            LDFLAGS="-lcrypto -lssl"
           make -j$(nproc)
 
       - name: 📦 Empacotar artefatos
