@@ -33,28 +33,25 @@ jobs:
         git clone https://github.com/sqlcipher/sqlcipher.git C:\sqlcipher
         cd C:\sqlcipher
         git checkout ${{ github.event.inputs.tag }}
-        dir
 
-    - name: ⚙️ Compilar SQLCipher (nativo no PowerShell)
+    - name: ⚙️ Compilar SQLCipher
       shell: pwsh
       run: |
         # Adiciona MinGW64 no PATH
         $env:PATH = "C:\msys64\mingw64\bin;$env:PATH"
-
-        # Garante que estamos dentro da pasta do código
         Set-Location C:\sqlcipher
 
-        Write-Host "🔹 Arquivos no diretório atual:"
-        Get-ChildItem
-
-        Write-Host "🔹 Compilando sqlite3.c..."
-        gcc -c sqlite3.c -DSQLITE_HAS_CODEC -DSQLCIPHER_CRYPTO_OPENSSL -DSQLITE_TEMP_STORE=2 -I"C:\msys64\mingw64\include" -L"C:\msys64\mingw64\lib" -lcrypto -lssl -lz
+        Write-Host "🔹 Compilando sqlite3.c (na pasta src)..."
+        gcc -c src/sqlite3.c -DSQLITE_HAS_CODEC -DSQLCIPHER_CRYPTO_OPENSSL -DSQLITE_TEMP_STORE=2 `
+          -I"C:\sqlcipher\src" -I"C:\msys64\mingw64\include" -L"C:\msys64\mingw64\lib" `
+          -lcrypto -lssl -lz
 
         Write-Host "🔹 Gerando DLL..."
         gcc -shared -o libsqlcipher.dll sqlite3.o -L"C:\msys64\mingw64\lib" -lcrypto -lssl -lz
 
         Write-Host "🔹 Gerando EXE..."
-        gcc -o sqlite3.exe shell.c libsqlcipher.dll -L"C:\msys64\mingw64\lib" -lcrypto -lssl -lz
+        gcc -o sqlite3.exe src/shell.c libsqlcipher.dll -I"C:\sqlcipher\src" `
+          -L"C:\msys64\mingw64\lib" -lcrypto -lssl -lz
 
     - name: 📦 Empacotar binários
       shell: pwsh
@@ -62,8 +59,8 @@ jobs:
         mkdir build
         copy C:\sqlcipher\sqlite3.exe build\
         copy C:\sqlcipher\libsqlcipher.dll build\
-        copy C:\sqlcipher\sqlite3.h build\
-        copy C:\sqlcipher\sqlite3ext.h build\
+        copy C:\sqlcipher\src\sqlite3.h build\
+        copy C:\sqlcipher\src\sqlite3ext.h build\
         cd build
         Compress-Archive -Path * -DestinationPath sqlcipher-windows.zip
 
