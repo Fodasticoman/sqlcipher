@@ -1,4 +1,4 @@
-name: Build SQLCipher (Windows MinGW-w64)
+name: Build SQLCipher (Windows Native MinGW)
 
 on:
   workflow_dispatch:
@@ -16,66 +16,55 @@ jobs:
     - name: 📦 Checkout
       uses: actions/checkout@v4
 
-    - name: 🧰 Instalar MSYS2 e dependências
+    - name: 🧰 Instalar MSYS2 + Toolchain
       uses: msys2/setup-msys2@v2
       with:
         update: true
         msystem: MINGW64
         install: >-
           git
-          base-devel
           mingw-w64-x86_64-toolchain
           mingw-w64-x86_64-openssl
           make
           zip
-          p7zip
 
-    - name: 🔹 Clonar SQLCipher para diretório seguro
-      shell: msys2 {0}
+    - name: 🔹 Clonar SQLCipher
+      shell: pwsh
       run: |
-        mkdir -p /c/sqlcipher
-        git clone https://github.com/sqlcipher/sqlcipher.git /c/sqlcipher
-        cd /c/sqlcipher
+        git clone https://github.com/sqlcipher/sqlcipher.git C:\sqlcipher
+        cd C:\sqlcipher
         git checkout ${{ github.event.inputs.tag }}
 
-    - name: ⚙️ Compilar SQLCipher (DLL + EXE)
-      shell: msys2 {0}
+    - name: ⚙️ Compilar SQLCipher (sem MSYS2 shell)
+      shell: pwsh
       run: |
-        cd /c/sqlcipher
+        $env:PATH = "C:\msys64\mingw64\bin;$env:PATH"
+        cd C:\sqlcipher
 
-        echo "🔹 Configurando compilação..."
-        ./configure \
-          --disable-tcl \
-          --enable-threadsafe \
-          --disable-load-extension \
-          CFLAGS="-DSQLITE_HAS_CODEC -DSQLCIPHER_CRYPTO_OPENSSL \
-          -DSQLITE_THREADSAFE=1 -DSQLITE_TEMP_STORE=2 \
-          -DSQLITE_EXTRA_INIT=sqlcipher_extra_init \
-          -DSQLITE_EXTRA_SHUTDOWN=sqlcipher_extra_shutdown \
-          -DSQLITE_API=__declspec(dllexport) \
-          -I/mingw64/include" \
-          LDFLAGS="-L/mingw64/lib -lcrypto -lssl -lz"
+        echo "🔹 Configurando ambiente..."
+        copy .\Makefile.msc .\Makefile.windows
 
-        echo "🔹 Compilando sqlite3.o..."
-        make -j4 sqlite3.o
+        echo "🔹 Compilando..."
+        gcc -c sqlite3.c -DSQLITE_HAS_CODEC -DSQLCIPHER_CRYPTO_OPENSSL -DSQLITE_TEMP_STORE=2 -I"C:\msys64\mingw64\include" -L"C:\msys64\mingw64\lib" -lcrypto -lssl -lz
 
-        echo "🔹 Gerando libsqlcipher.dll..."
-        gcc -shared -o libsqlcipher.dll sqlite3.o -L/mingw64/lib -lcrypto -lssl -lz
+        echo "🔹 Gerando DLL..."
+        gcc -shared -o libsqlcipher.dll sqlite3.o -L"C:\msys64\mingw64\lib" -lcrypto -lssl -lz
 
-        echo "✅ Build concluído!"
+        echo "🔹 Gerando EXE..."
+        gcc -o sqlite3.exe shell.c libsqlcipher.dll -L"C:\msys64\mingw64\lib" -lcrypto -lssl -lz
 
     - name: 📦 Empacotar binários
-      shell: msys2 {0}
+      shell: pwsh
       run: |
-        mkdir -p build/sqlcipher
-        cp /c/sqlcipher/sqlite3.exe build/sqlcipher/ || true
-        cp /c/sqlcipher/libsqlcipher.dll build/sqlcipher/ || true
-        cp /c/sqlcipher/sqlite3.h build/sqlcipher/ || true
-        cp /c/sqlcipher/sqlite3ext.h build/sqlcipher/ || true
+        mkdir build
+        copy C:\sqlcipher\sqlite3.exe build\
+        copy C:\sqlcipher\libsqlcipher.dll build\
+        copy C:\sqlcipher\sqlite3.h build\
+        copy C:\sqlcipher\sqlite3ext.h build\
         cd build
-        7z a sqlcipher-windows.zip sqlcipher
+        Compress-Archive -Path * -DestinationPath sqlcipher-windows.zip
 
-    - name: ⬆️ Publicar artefato compilado
+    - name: ⬆️ Publicar artefato
       uses: actions/upload-artifact@v4
       with:
         name: sqlcipher-windows
