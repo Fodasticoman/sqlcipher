@@ -30,7 +30,7 @@ jobs:
           zip
           p7zip
 
-    - name: 🔹 Baixar SQLCipher
+    - name: 🔹 Clonar SQLCipher
       shell: msys2 {0}
       run: |
         git clone https://github.com/sqlcipher/sqlcipher.git
@@ -46,6 +46,7 @@ jobs:
         ./configure \
           --disable-tcl \
           --enable-threadsafe \
+          --disable-load-extension \
           CFLAGS="-DSQLITE_HAS_CODEC -DSQLCIPHER_CRYPTO_OPENSSL \
           -DSQLITE_THREADSAFE=1 -DSQLITE_TEMP_STORE=2 \
           -DSQLITE_EXTRA_INIT=sqlcipher_extra_init \
@@ -54,14 +55,20 @@ jobs:
           -I/mingw64/include" \
           LDFLAGS="-L/mingw64/lib -lcrypto -lssl -lz"
 
-        echo "🔹 Compilando sqlite3..."
+        echo "🔹 Compilando sqlite3 (escape fix)..."
+        export PATH="/mingw64/bin:$PATH"
         make clean
-        make -j4 || true  # continua mesmo se shell.c falhar
+        make sqlite3.o || true
+
+        if [ ! -f sqlite3.o ]; then
+          echo "❌ Falhou ao gerar sqlite3.o"
+          exit 1
+        fi
 
         echo "🔹 Gerando DLL manualmente..."
         gcc -shared -o libsqlcipher.dll sqlite3.o -L/mingw64/lib -lcrypto -lssl -lz
 
-        echo "✅ Finalizado!"
+        echo "✅ Build finalizado com sucesso!"
 
     - name: 📦 Empacotar binários
       shell: msys2 {0}
