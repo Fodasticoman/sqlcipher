@@ -1,4 +1,4 @@
-name: Build SQLCipher (Windows Native MinGW)
+name: Build SQLCipher (Windows MinGW)
 
 on:
   workflow_dispatch:
@@ -23,6 +23,9 @@ jobs:
         msystem: MINGW64
         install: >-
           git
+          make
+          automake
+          autoconf
           mingw-w64-x86_64-toolchain
           mingw-w64-x86_64-openssl
           zip
@@ -34,23 +37,32 @@ jobs:
         cd C:\sqlcipher
         git checkout ${{ github.event.inputs.tag }}
 
-    - name: ⚙️ Compilar SQLCipher
+    - name: ⚙️ Gerar sqlite3.c e shell.c
+      shell: bash
+      run: |
+        cd /c/sqlcipher
+        echo "🔹 Executando autoconf..."
+        ./configure --enable-tempstore=yes --disable-tcl
+        echo "🔹 Gerando arquivos amalgamados..."
+        make sqlite3.c
+        make shell.c || true
+
+    - name: 🧩 Compilar SQLCipher e gerar DLL
       shell: pwsh
       run: |
-        # Adiciona MinGW64 no PATH
         $env:PATH = "C:\msys64\mingw64\bin;$env:PATH"
         Set-Location C:\sqlcipher
 
-        Write-Host "🔹 Compilando sqlite3.c (na pasta src)..."
-        gcc -c src/sqlite3.c -DSQLITE_HAS_CODEC -DSQLCIPHER_CRYPTO_OPENSSL -DSQLITE_TEMP_STORE=2 `
-          -I"C:\sqlcipher\src" -I"C:\msys64\mingw64\include" -L"C:\msys64\mingw64\lib" `
+        Write-Host "🔹 Compilando sqlite3.c..."
+        gcc -c sqlite3.c -DSQLITE_HAS_CODEC -DSQLCIPHER_CRYPTO_OPENSSL -DSQLITE_TEMP_STORE=2 `
+          -I"C:\sqlcipher" -I"C:\msys64\mingw64\include" -L"C:\msys64\mingw64\lib" `
           -lcrypto -lssl -lz
 
         Write-Host "🔹 Gerando DLL..."
         gcc -shared -o libsqlcipher.dll sqlite3.o -L"C:\msys64\mingw64\lib" -lcrypto -lssl -lz
 
         Write-Host "🔹 Gerando EXE..."
-        gcc -o sqlite3.exe src/shell.c libsqlcipher.dll -I"C:\sqlcipher\src" `
+        gcc -o sqlite3.exe shell.c libsqlcipher.dll -I"C:\sqlcipher" `
           -L"C:\msys64\mingw64\lib" -lcrypto -lssl -lz
 
     - name: 📦 Empacotar binários
@@ -59,8 +71,8 @@ jobs:
         mkdir build
         copy C:\sqlcipher\sqlite3.exe build\
         copy C:\sqlcipher\libsqlcipher.dll build\
-        copy C:\sqlcipher\src\sqlite3.h build\
-        copy C:\sqlcipher\src\sqlite3ext.h build\
+        copy C:\sqlcipher\sqlite3.h build\
+        copy C:\sqlcipher\sqlite3ext.h build\
         cd build
         Compress-Archive -Path * -DestinationPath sqlcipher-windows.zip
 
