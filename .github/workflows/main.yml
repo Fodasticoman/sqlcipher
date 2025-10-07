@@ -42,8 +42,11 @@ jobs:
         shell: pwsh
         run: |
           echo "🔹 Compilando SQLCipher..."
+          $workdir = "${{ github.workspace }}\\sqlcipher"
+          echo "🔹 Diretório de trabalho: $workdir"
           C:\tools\msys64\usr\bin\bash -lc "
-            cd /d/a/${{ github.event.repository.name }}/${{ github.event.repository.name }}/sqlcipher
+            cd \"${workdir//\\//}\"
+            echo '🔹 Dentro de:' \$(pwd)
             export PATH=/mingw64/bin:\$PATH
 
             echo '🔹 Compilando biblioteca principal (DLL)...'
