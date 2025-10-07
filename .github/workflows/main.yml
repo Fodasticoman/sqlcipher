@@ -23,14 +23,9 @@ jobs:
           C:\tools\msys64\usr\bin\bash -lc "
             pacman -S --noconfirm \
               base-devel \
-              autoconf \
-              automake \
-              libtool \
               make \
               mingw-w64-x86_64-gcc \
-              mingw-w64-x86_64-openssl \
-              mingw-w64-x86_64-pkg-config \
-              mingw-w64-x86_64-tcl
+              mingw-w64-x86_64-openssl
           "
 
       - name: Baixar SQLCipher
@@ -40,20 +35,8 @@ jobs:
           curl -L -o sqlcipher.zip https://github.com/sqlcipher/sqlcipher/archive/refs/tags/${{ github.event.inputs.tag }}.zip
           tar -xf sqlcipher.zip
           $folder = Get-ChildItem -Directory | Where-Object { $_.Name -like 'sqlcipher-*' } | Select-Object -First 1
-          if (-not $folder) { throw "❌ Diretório sqlcipher-* não encontrado após extração!" }
+          if (-not $folder) { throw "❌ Diretório sqlcipher-* não encontrado!" }
           Rename-Item -Path $folder.FullName -NewName "sqlcipher"
-
-      - name: Gerar amalgamation (sqlite3.c e shell.c)
-        shell: pwsh
-        run: |
-          echo "🔹 Gerando arquivos sqlite3.c e shell.c..."
-          C:\tools\msys64\usr\bin\bash -lc "
-            cd /d/a/${{ github.event.repository.name }}/${{ github.event.repository.name }}/sqlcipher
-            autoreconf -fi
-            ./configure --enable-tempstore=yes --disable-tcl --with-crypto-lib=openssl
-            make sqlite3.c shell.c
-          "
-          echo "✅ Arquivos sqlite3.c e shell.c gerados."
 
       - name: Compilar SQLCipher (DLL e EXE)
         shell: pwsh
@@ -64,14 +47,9 @@ jobs:
             export PATH=/mingw64/bin:\$PATH
 
             echo '🔹 Compilando biblioteca principal (DLL)...'
-            gcc -DSQLITE_HAS_CODEC \
-                -DSQLCIPHER_CRYPTO_OPENSSL \
-                -DSQLITE_TEMP_STORE=2 \
-                -DSQLITE_EXTRA_INIT=sqlcipher_extra_init \
-                -DSQLITE_EXTRA_SHUTDOWN=sqlcipher_extra_shutdown \
-                -DHAVE_STDINT_H \
+            gcc -O2 -DSQLITE_HAS_CODEC -DSQLCIPHER_CRYPTO_OPENSSL \
+                -DSQLITE_TEMP_STORE=2 -DHAVE_STDINT_H \
                 -I. \
-                -I/mingw64/include \
                 sqlite3.c \
                 -shared -o sqlcipher.dll \
                 -L/mingw64/lib -lcrypto -lssl
@@ -80,10 +58,7 @@ jobs:
             gcc shell.c -o sqlcipher.exe \
                 -I. \
                 -DSQLITE_HAS_CODEC -DSQLCIPHER_CRYPTO_OPENSSL \
-                -DSQLITE_TEMP_STORE=2 \
-                -DSQLITE_EXTRA_INIT=sqlcipher_extra_init \
-                -DSQLITE_EXTRA_SHUTDOWN=sqlcipher_extra_shutdown \
-                -DHAVE_STDINT_H \
+                -DSQLITE_TEMP_STORE=2 -DHAVE_STDINT_H \
                 -L. -lsqlcipher -L/mingw64/lib -lcrypto -lssl
           "
 
