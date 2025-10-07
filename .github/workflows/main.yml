@@ -23,18 +23,21 @@ jobs:
         run: |
           echo "🔹 Instalando MSYS2..."
           choco install msys2 --no-progress -y
-          echo "🔹 Instalando pacotes base..."
-          C:\msys64\usr\bin\bash -lc "pacman -S --noconfirm --needed mingw-w64-x86_64-gcc mingw-w64-x86_64-openssl make autoconf automake libtool pkgconf"
+          echo "🔹 Instalando pacotes necessários..."
+          C:\msys64\usr\bin\bash -lc "pacman -S --noconfirm --needed mingw-w64-x86_64-gcc mingw-w64-x86_64-openssl make autoconf automake libtool pkgconf tcl"
 
-      - name: 🏗️ Gerar arquivos sqlite3.c e shell.c
+      - name: 🏗️ Gerar arquivos sqlite3.c e shell.c manualmente
         shell: pwsh
         run: |
-          echo "🔹 Entrando no diretório SQLCipher..."
+          echo "🔹 Gerando arquivos sqlite3.c e shell.c manualmente..."
           cd sqlcipher
-          echo "🔹 Preparando scripts de build..."
-          C:\msys64\usr\bin\bash -lc "cd /d/a/_temp && cd ../../_work/${{ github.event.repository.name }}/${{ github.event.repository.name }}/sqlcipher && autoreconf -fi"
-          echo "🔹 Gerando arquivos com make..."
-          C:\msys64\usr\bin\bash -lc "cd /d/a/_temp && cd ../../_work/${{ github.event.repository.name }}/${{ github.event.repository.name }}/sqlcipher && make sqlite3.c shell.c || true"
+          C:\msys64\usr\bin\bash -lc "cd /d/a/_work/${{ github.event.repository.name }}/${{ github.event.repository.name }}/sqlcipher && \
+            mkdir -p build && cd build && \
+            cp -r ../* . && \
+            echo '🔹 Executando tclsh para gerar sqlite3.c...' && \
+            tclsh ../tool/mksqlite3c.tcl > sqlite3.c && \
+            echo '🔹 Gerando shell.c...' && \
+            cp ../src/shell.c shell.c"
 
       - name: 🔍 Listar arquivos gerados (.c)
         shell: pwsh
@@ -49,7 +52,7 @@ jobs:
           echo "🔹 Ajustando PATH..."
           $env:PATH = "C:\msys64\mingw64\bin;$env:PATH"
 
-          cd sqlcipher
+          cd sqlcipher/build
           $sqlite3Path = (Get-ChildItem -Recurse -Filter sqlite3.c | Select-Object -First 1).FullName
           $shellPath   = (Get-ChildItem -Recurse -Filter shell.c   | Select-Object -First 1).FullName
 
@@ -66,10 +69,10 @@ jobs:
         shell: pwsh
         run: |
           echo "🔹 Compactando arquivos compilados..."
-          if (!(Test-Path "sqlcipher/sqlcipher.dll")) { throw "❌ sqlcipher.dll não encontrado!" }
-          if (!(Test-Path "sqlcipher/sqlcipher.exe")) { throw "❌ sqlcipher.exe não encontrado!" }
+          if (!(Test-Path "sqlcipher/build/sqlcipher.dll")) { throw "❌ sqlcipher.dll não encontrado!" }
+          if (!(Test-Path "sqlcipher/build/sqlcipher.exe")) { throw "❌ sqlcipher.exe não encontrado!" }
 
-          Compress-Archive -Path sqlcipher/sqlcipher.dll,sqlcipher/sqlcipher.exe,sqlcipher/sqlite3.h,sqlcipher/sqlite3ext.h -DestinationPath sqlcipher-windows.zip
+          Compress-Archive -Path sqlcipher/build/sqlcipher.dll,sqlcipher/build/sqlcipher.exe,sqlcipher/sqlite3.h,sqlcipher/sqlite3ext.h -DestinationPath sqlcipher-windows.zip
           echo "✅ Arquivo compactado com sucesso."
 
       - name: 📤 Upload do build gerado
