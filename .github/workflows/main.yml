@@ -30,13 +30,13 @@ jobs:
         shell: pwsh
         run: |
           echo "🔹 Gerando arquivos sqlite3.c e shell.c manualmente..."
-          cd sqlcipher
-          C:\msys64\usr\bin\bash -lc "cd /d/a/_work/${{ github.event.repository.name }}/${{ github.event.repository.name }}/sqlcipher && \
+          $workDir = (Get-Location).Path + "\sqlcipher"
+          C:\msys64\usr\bin\bash -lc "cd '${workDir.Replace('\', '/')}' && \
             mkdir -p build && cd build && \
             cp -r ../* . && \
             echo '🔹 Executando tclsh para gerar sqlite3.c...' && \
             tclsh ../tool/mksqlite3c.tcl > sqlite3.c && \
-            echo '🔹 Gerando shell.c...' && \
+            echo '🔹 Copiando shell.c...' && \
             cp ../src/shell.c shell.c"
 
       - name: 🔍 Listar arquivos gerados (.c)
@@ -52,7 +52,7 @@ jobs:
           echo "🔹 Ajustando PATH..."
           $env:PATH = "C:\msys64\mingw64\bin;$env:PATH"
 
-          cd sqlcipher/build
+          cd sqlcipher\build
           $sqlite3Path = (Get-ChildItem -Recurse -Filter sqlite3.c | Select-Object -First 1).FullName
           $shellPath   = (Get-ChildItem -Recurse -Filter shell.c   | Select-Object -First 1).FullName
 
