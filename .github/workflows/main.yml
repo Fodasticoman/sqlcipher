@@ -23,10 +23,14 @@ jobs:
           C:\tools\msys64\usr\bin\bash -lc "
             pacman -S --noconfirm \
               base-devel \
+              autoconf \
+              automake \
+              libtool \
+              make \
               mingw-w64-x86_64-gcc \
               mingw-w64-x86_64-openssl \
-              mingw-w64-x86_64-tcl \
-              mingw-w64-x86_64-pkg-config
+              mingw-w64-x86_64-pkg-config \
+              mingw-w64-x86_64-tcl
           "
 
       - name: Baixar SQLCipher
@@ -39,14 +43,24 @@ jobs:
           if (-not $folder) { throw "❌ Diretório sqlcipher-* não encontrado após extração!" }
           Rename-Item -Path $folder.FullName -NewName "sqlcipher"
 
+      - name: Gerar amalgamation (sqlite3.c e shell.c)
+        shell: pwsh
+        run: |
+          echo "🔹 Gerando arquivos sqlite3.c e shell.c..."
+          C:\tools\msys64\usr\bin\bash -lc "
+            cd /d/a/${{ github.event.repository.name }}/${{ github.event.repository.name }}/sqlcipher
+            autoreconf -fi
+            ./configure --enable-tempstore=yes --disable-tcl --with-crypto-lib=openssl
+            make sqlite3.c shell.c
+          "
+          echo "✅ Arquivos sqlite3.c e shell.c gerados."
+
       - name: Compilar SQLCipher (DLL e EXE)
         shell: pwsh
         run: |
           echo "🔹 Compilando SQLCipher..."
           C:\tools\msys64\usr\bin\bash -lc "
             cd /d/a/${{ github.event.repository.name }}/${{ github.event.repository.name }}/sqlcipher
-
-            echo '🔹 Ajustando PATH...'
             export PATH=/mingw64/bin:\$PATH
 
             echo '🔹 Compilando biblioteca principal (DLL)...'
@@ -57,14 +71,16 @@ jobs:
                 -DSQLITE_EXTRA_SHUTDOWN=sqlcipher_extra_shutdown \
                 -DHAVE_STDINT_H \
                 -I. \
-                -IC:/tools/msys64/mingw64/include \
+                -I/mingw64/include \
                 sqlite3.c \
                 -shared -o sqlcipher.dll \
                 -L/mingw64/lib -lcrypto -lssl
 
             echo '🔹 Compilando executável CLI...'
             gcc shell.c -o sqlcipher.exe \
-                -I. -DSQLITE_HAS_CODEC -DSQLCIPHER_CRYPTO_OPENSSL -DSQLITE_TEMP_STORE=2 \
+                -I. \
+                -DSQLITE_HAS_CODEC -DSQLCIPHER_CRYPTO_OPENSSL \
+                -DSQLITE_TEMP_STORE=2 \
                 -DSQLITE_EXTRA_INIT=sqlcipher_extra_init \
                 -DSQLITE_EXTRA_SHUTDOWN=sqlcipher_extra_shutdown \
                 -DHAVE_STDINT_H \
