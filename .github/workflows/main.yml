@@ -14,7 +14,7 @@ jobs:
 
     steps:
       - name: 🔹 Preparar ambiente
-        shell: bash
+        shell: pwsh
         run: |
           echo "🔹 Atualizando e instalando dependências..."
           choco install msys2 --no-progress -y
@@ -29,4 +29,38 @@ jobs:
           git checkout ${{ github.event.inputs.tag }}
 
       - name: ⚙️ Gerar sqlite3.c e shell.c
-        shell: ba
+        shell: bash
+        run: |
+          cd sqlcipher
+          echo "🔹 Executando autoconf..."
+          ./configure --disable-tcl
+          echo "🔹 Gerando arquivos amalgamados..."
+          make sqlite3.c || true
+          make shell.c || true
+
+      - name: 🧱 Compilar SQLCipher (DLL + EXE)
+        shell: pwsh
+        run: |
+          $env:PATH = "C:\msys64\mingw64\bin;$env:PATH"
+          cd sqlcipher
+          echo "🔹 Compilando sqlite3.c..."
+          gcc -O2 -DSQLITE_HAS_CODEC -DSQLCIPHER_CRYPTO_OPENSSL -DSQLITE_TEMP_STORE=2 -DSQLITE_THREADSAFE=1 -DSQLITE_API=__declspec(dllexport) -I"C:\msys64\mingw64\include" -c sqlite3.c -o sqlite3.o
+          
+          echo "🔹 Gerando DLL..."
+          gcc -shared -o libsqlcipher.dll sqlite3.o -lcrypto -lssl -lz -L"C:\msys64\mingw64\lib"
+          
+          echo "🔹 Gerando EXE..."
+          gcc -O2 shell.c -o sqlite3.exe -DSQLITE_HAS_CODEC -DSQLCIPHER_CRYPTO_OPENSSL -I. -L. -lsqlcipher -lcrypto -lssl -lz
+
+      - name: 📦 Empacotar artefatos
+        shell: pwsh
+        run: |
+          cd sqlcipher
+          echo "🔹 Empacotando arquivos..."
+          Compress-Archive -Path sqlite3.exe,libsqlcipher.dll,sqlite3.h,sqlite3ext.h -DestinationPath sqlcipher-windows.zip
+
+      - name: 📤 Publicar build
+        uses: actions/upload-artifact@v4
+        with:
+          name: sqlcipher-windows
+          path: sqlcipher/sqlcipher-windows.zip
