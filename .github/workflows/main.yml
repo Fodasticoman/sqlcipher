@@ -26,26 +26,41 @@ jobs:
           echo "🔹 Instalando pacotes base..."
           C:\msys64\usr\bin\bash -lc "pacman -S --noconfirm --needed mingw-w64-x86_64-gcc mingw-w64-x86_64-openssl make autoconf automake libtool pkgconf"
 
-      - name: 🔍 Listar todos os arquivos .c (debug)
+      - name: 🏗️ Gerar arquivos sqlite3.c e shell.c
         shell: pwsh
         run: |
-          echo "🔍 Listando todos os arquivos .c encontrados..."
-          Get-ChildItem -Recurse -Filter *.c | ForEach-Object { $_.FullName }
+          echo "🔹 Entrando no diretório SQLCipher..."
+          cd sqlcipher
+          echo "🔹 Preparando scripts de build..."
+          C:\msys64\usr\bin\bash -lc "cd /d/a/_temp && cd ../../_work/${{ github.event.repository.name }}/${{ github.event.repository.name }}/sqlcipher && autoreconf -fi"
+          echo "🔹 Gerando arquivos com make..."
+          C:\msys64\usr\bin\bash -lc "cd /d/a/_temp && cd ../../_work/${{ github.event.repository.name }}/${{ github.event.repository.name }}/sqlcipher && make sqlite3.c shell.c || true"
 
-      - name: 🏗️ Compilar SQLCipher
+      - name: 🔍 Listar arquivos gerados (.c)
+        shell: pwsh
+        run: |
+          echo "🔍 Verificando onde estão sqlite3.c e shell.c..."
+          Get-ChildItem -Recurse -Filter sqlite3.c | ForEach-Object { $_.FullName }
+          Get-ChildItem -Recurse -Filter shell.c | ForEach-Object { $_.FullName }
+
+      - name: 🧱 Compilar SQLCipher (DLL + CLI)
         shell: pwsh
         run: |
           echo "🔹 Ajustando PATH..."
           $env:PATH = "C:\msys64\mingw64\bin;$env:PATH"
 
-          echo "🔹 Entrando no diretório do SQLCipher..."
           cd sqlcipher
+          $sqlite3Path = (Get-ChildItem -Recurse -Filter sqlite3.c | Select-Object -First 1).FullName
+          $shellPath   = (Get-ChildItem -Recurse -Filter shell.c   | Select-Object -First 1).FullName
+
+          if (-not $sqlite3Path) { throw "❌ sqlite3.c não encontrado!" }
+          if (-not $shellPath) { throw "❌ shell.c não encontrado!" }
 
           echo "🔹 Compilando biblioteca principal (DLL)..."
-          gcc -O2 -DSQLITE_HAS_CODEC -DSQLCIPHER_CRYPTO_OPENSSL -DSQLITE_TEMP_STORE=2 -DHAVE_STDINT_H -I./src ./src/sqlite3.c -shared -o sqlcipher.dll -L/mingw64/lib -lcrypto -lssl
+          gcc -O2 -DSQLITE_HAS_CODEC -DSQLCIPHER_CRYPTO_OPENSSL -DSQLITE_TEMP_STORE=2 -DHAVE_STDINT_H -I. "$sqlite3Path" -shared -o sqlcipher.dll -L/mingw64/lib -lcrypto -lssl
 
           echo "🔹 Compilando executável CLI..."
-          gcc -O2 -DSQLITE_HAS_CODEC -DSQLCIPHER_CRYPTO_OPENSSL -DSQLITE_TEMP_STORE=2 -DHAVE_STDINT_H -I./src ./src/shell.c -o sqlcipher.exe -L/mingw64/lib -lcrypto -lssl
+          gcc -O2 -DSQLITE_HAS_CODEC -DSQLCIPHER_CRYPTO_OPENSSL -DSQLITE_TEMP_STORE=2 -DHAVE_STDINT_H -I. "$shellPath" -o sqlcipher.exe -L/mingw64/lib -lcrypto -lssl
 
       - name: 📦 Compactar arquivos compilados
         shell: pwsh
