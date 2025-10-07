@@ -44,13 +44,14 @@ jobs:
         run: |
           echo "🔹 Compilando SQLCipher..."
           C:\tools\msys64\usr\bin\bash -lc "
-            cd /d/a/${{ github.event.repository.name }}/sqlcipher
+            cd /d/a/${{ github.event.repository.name }}/${{ github.event.repository.name }}/sqlcipher
 
             echo '🔹 Ajustando PATH...'
             export PATH=/mingw64/bin:\$PATH
 
             echo '🔹 Compilando biblioteca principal (DLL)...'
             gcc -DSQLITE_HAS_CODEC \
+                -DSQLCIPHER_CRYPTO_OPENSSL \
                 -DSQLITE_TEMP_STORE=2 \
                 -DSQLITE_EXTRA_INIT=sqlcipher_extra_init \
                 -DSQLITE_EXTRA_SHUTDOWN=sqlcipher_extra_shutdown \
@@ -63,7 +64,7 @@ jobs:
 
             echo '🔹 Compilando executável CLI...'
             gcc shell.c -o sqlcipher.exe \
-                -I. -DSQLITE_HAS_CODEC -DSQLITE_TEMP_STORE=2 \
+                -I. -DSQLITE_HAS_CODEC -DSQLCIPHER_CRYPTO_OPENSSL -DSQLITE_TEMP_STORE=2 \
                 -DSQLITE_EXTRA_INIT=sqlcipher_extra_init \
                 -DSQLITE_EXTRA_SHUTDOWN=sqlcipher_extra_shutdown \
                 -DHAVE_STDINT_H \
