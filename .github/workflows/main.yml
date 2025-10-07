@@ -13,76 +13,66 @@ jobs:
     runs-on: windows-latest
 
     steps:
-      - name: Preparar ambiente
-        shell: pwsh
+      - name: Checkout repositório
+        uses: actions/checkout@v4
+
+      - name: Instalar MSYS2 e dependências
         run: |
-          echo 'Instalando MSYS2 e dependências...'
           choco install msys2 --no-progress -y
-          C:\tools\msys64\usr\bin\bash -lc "pacman -Sy --noconfirm mingw-w64-x86_64-toolchain mingw-w64-x86_64-openssl make autoconf"
+          C:\tools\msys64\usr\bin\bash -lc "pacman -Syu --noconfirm"
+          C:\tools\msys64\usr\bin\bash -lc "
+            pacman -S --noconfirm \
+              base-devel \
+              mingw-w64-x86_64-gcc \
+              mingw-w64-x86_64-openssl \
+              mingw-w64-x86_64-tcl \
+              mingw-w64-x86_64-pkg-config
+          "
 
-      - name: Clonar SQLCipher
-        shell: bash
+      - name: Baixar SQLCipher
         run: |
-          echo "Baixando SQLCipher versão ${{ github.event.inputs.tag }}"
-          git clone https://github.com/sqlcipher/sqlcipher.git
-          cd sqlcipher
-          git checkout ${{ github.event.inputs.tag }}
+          echo "🔹 Baixando SQLCipher..."
+          curl -L -o sqlcipher.zip https://github.com/sqlcipher/sqlcipher/archive/refs/tags/${{ github.event.inputs.tag }}.zip
+          tar -xf sqlcipher.zip
+          ren sqlcipher-* sqlcipher
 
-      - name: Gerar sqlite3.c e shell.c
-        shell: bash
+      - name: Compilar SQLCipher (DLL e EXE)
         run: |
-          cd sqlcipher
-          echo "Executando autoconf..."
-          ./configure --disable-tcl
-          echo "Gerando arquivos amalgamados..."
-          make sqlite3.c || true
-          make shell.c || true
+          echo "🔹 Compilando SQLCipher..."
+          C:\tools\msys64\usr\bin\bash -lc "
+            cd /d/a/${{ github.event.repository.name }}/sqlcipher
 
-      - name: Compilar SQLCipher (DLL + EXE)
-        shell: pwsh
-        run: |
-          echo 'Compilando SQLCipher (com OpenSSL e correções)...'
-          $env:PATH = "C:\msys64\mingw64\bin;$env:PATH"
-          cd sqlcipher
+            echo '🔹 Ajustando PATH...'
+            export PATH=/mingw64/bin:\$PATH
 
-          # Compilar o código principal
-          & gcc -O2 `
-            -DSQLITE_HAS_CODEC `
-            -DSQLCIPHER_CRYPTO_OPENSSL `
-            -DSQLITE_TEMP_STORE=2 `
-            -DSQLITE_THREADSAFE=1 `
-            -DSQLITE_EXTRA_INIT=sqlcipher_extra_init `
-            -DSQLITE_EXTRA_SHUTDOWN=sqlcipher_extra_shutdown `
-            -include stdint.h `
-            "-DSQLITE_API=__declspec(dllexport)" `
-            -I"C:\msys64\mingw64\include" `
-            -c sqlite3.c -o sqlite3.o
+            echo '🔹 Compilando biblioteca principal...'
+            gcc -DSQLITE_HAS_CODEC \
+                -DSQLITE_TEMP_STORE=2 \
+                -DSQLITE_EXTRA_INIT=sqlcipher_extra_init \
+                -DSQLITE_EXTRA_SHUTDOWN=sqlcipher_extra_shutdown \
+                -DHAVE_STDINT_H \
+                -I. \
+                -IC:/tools/msys64/mingw64/include \
+                sqlite3.c \
+                -shared -o sqlcipher.dll \
+                -L/mingw64/lib -lcrypto -lssl
 
-          # Gerar a DLL
-          & gcc -shared -o libsqlcipher.dll sqlite3.o `
-            -L"C:\msys64\mingw64\lib" -lcrypto -lssl -lz
-
-          # Gerar o executável CLI
-          & gcc -O2 shell.c -o sqlite3.exe `
-            -DSQLITE_HAS_CODEC `
-            -DSQLCIPHER_CRYPTO_OPENSSL `
-            -DSQLITE_TEMP_STORE=2 `
-            -DSQLITE_THREADSAFE=1 `
-            -DSQLITE_EXTRA_INIT=sqlcipher_extra_init `
-            -DSQLITE_EXTRA_SHUTDOWN=sqlcipher_extra_shutdown `
-            -include stdint.h `
-            -I. -L. -lsqlcipher `
-            -L"C:\msys64\mingw64\lib" -lcrypto -lssl -lz
+            echo '🔹 Compilando executável CLI...'
+            gcc shell.c -o sqlcipher.exe \
+                -I. -DSQLITE_HAS_CODEC -DSQLITE_TEMP_STORE=2 \
+                -DSQLITE_EXTRA_INIT=sqlcipher_extra_init \
+                -DSQLITE_EXTRA_SHUTDOWN=sqlcipher_extra_shutdown \
+                -DHAVE_STDINT_H \
+                -L. -lsqlcipher -L/mingw64/lib -lcrypto -lssl
+          "
 
       - name: Empacotar artefatos
-        shell: pwsh
         run: |
-          echo 'Empacotando arquivos...'
-          cd sqlcipher
-          Compress-Archive -Path sqlite3.exe,libsqlcipher.dll,sqlite3.h,sqlite3ext.h -DestinationPath sqlcipher-windows.zip
+          echo "🔹 Compactando arquivos compilados..."
+          powershell Compress-Archive -Path sqlcipher/sqlcipher.dll,sqlcipher/sqlcipher.exe -DestinationPath sqlcipher_build.zip
 
-      - name: Publicar build
+      - name: Publicar artefatos
         uses: actions/upload-artifact@v4
         with:
-          name: sqlcipher-windows
-          path: sqlcipher/sqlcipher-windows.zip
+          name: sqlcipher-windows-build
+          path: sqlcipher_build.zip
