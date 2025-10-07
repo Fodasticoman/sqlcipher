@@ -25,7 +25,11 @@ jobs:
               base-devel \
               make \
               mingw-w64-x86_64-gcc \
-              mingw-w64-x86_64-openssl
+              mingw-w64-x86_64-openssl \
+              autoconf \
+              automake \
+              libtool \
+              tcl
           "
 
       - name: Baixar SQLCipher
@@ -38,16 +42,31 @@ jobs:
           if (-not $folder) { throw "❌ Diretório sqlcipher-* não encontrado!" }
           Rename-Item -Path $folder.FullName -NewName "sqlcipher"
 
+      - name: Gerar arquivos sqlite3.c e shell.c
+        shell: pwsh
+        run: |
+          echo "🔹 Gerando arquivos sqlite3.c e shell.c..."
+          $workdir = "${{ github.workspace }}\\sqlcipher"
+          C:\tools\msys64\usr\bin\bash -lc "
+            cd \"${workdir//\\//}\"
+            autoreconf -fi || true
+            ./configure --enable-tempstore=yes --enable-fts5
+            make sqlite3.c shell.c || true
+            if [ ! -f sqlite3.c ]; then echo '❌ sqlite3.c não foi gerado!'; fi
+            if [ ! -f shell.c ]; then echo '❌ shell.c não foi gerado!'; fi
+          "
+
       - name: Compilar SQLCipher (DLL e EXE)
         shell: pwsh
         run: |
           echo "🔹 Compilando SQLCipher..."
           $workdir = "${{ github.workspace }}\\sqlcipher"
-          echo "🔹 Diretório de trabalho: $workdir"
           C:\tools\msys64\usr\bin\bash -lc "
             cd \"${workdir//\\//}\"
-            echo '🔹 Dentro de:' \$(pwd)
             export PATH=/mingw64/bin:\$PATH
+
+            echo '🔹 Verificando arquivos...'
+            ls -l sqlite3.c shell.c || true
 
             echo '🔹 Compilando biblioteca principal (DLL)...'
             gcc -O2 -DSQLITE_HAS_CODEC -DSQLCIPHER_CRYPTO_OPENSSL \
@@ -55,24 +74,22 @@ jobs:
                 -I. \
                 sqlite3.c \
                 -shared -o sqlcipher.dll \
-                -L/mingw64/lib -lcrypto -lssl
+                -L/mingw64/lib -lcrypto -lssl || exit 1
 
             echo '🔹 Compilando executável CLI...'
             gcc shell.c -o sqlcipher.exe \
                 -I. \
                 -DSQLITE_HAS_CODEC -DSQLCIPHER_CRYPTO_OPENSSL \
                 -DSQLITE_TEMP_STORE=2 -DHAVE_STDINT_H \
-                -L. -lsqlcipher -L/mingw64/lib -lcrypto -lssl
+                -L. -lsqlcipher -L/mingw64/lib -lcrypto -lssl || exit 1
+
+            echo '✅ Compilação concluída.'
           "
 
       - name: Empacotar artefatos
         shell: pwsh
         run: |
           echo "🔹 Compactando arquivos compilados..."
-          Compress-Archive -Path sqlcipher/sqlcipher.dll,sqlcipher/sqlcipher.exe -DestinationPath sqlcipher_build.zip
-
-      - name: Publicar artefatos
-        uses: actions/upload-artifact@v4
-        with:
-          name: sqlcipher-windows-build
-          path: sqlcipher_build.zip
+          if (-not (Test-Path "sqlcipher/sqlcipher.dll")) { throw "❌ sqlcipher.dll não encontrado!" }
+          if (-not (Test-Path "sqlcipher/sqlcipher.exe")) { throw "❌ sqlcipher.exe não encontrado!" }
+          Compress-Arc
