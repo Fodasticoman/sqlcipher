@@ -30,13 +30,17 @@ jobs:
           "
 
       - name: Baixar SQLCipher
+        shell: pwsh
         run: |
           echo "🔹 Baixando SQLCipher..."
           curl -L -o sqlcipher.zip https://github.com/sqlcipher/sqlcipher/archive/refs/tags/${{ github.event.inputs.tag }}.zip
           tar -xf sqlcipher.zip
-          ren sqlcipher-* sqlcipher
+          $folder = Get-ChildItem -Directory | Where-Object { $_.Name -like 'sqlcipher-*' } | Select-Object -First 1
+          if (-not $folder) { throw "❌ Diretório sqlcipher-* não encontrado após extração!" }
+          Rename-Item -Path $folder.FullName -NewName "sqlcipher"
 
       - name: Compilar SQLCipher (DLL e EXE)
+        shell: pwsh
         run: |
           echo "🔹 Compilando SQLCipher..."
           C:\tools\msys64\usr\bin\bash -lc "
@@ -45,7 +49,7 @@ jobs:
             echo '🔹 Ajustando PATH...'
             export PATH=/mingw64/bin:\$PATH
 
-            echo '🔹 Compilando biblioteca principal...'
+            echo '🔹 Compilando biblioteca principal (DLL)...'
             gcc -DSQLITE_HAS_CODEC \
                 -DSQLITE_TEMP_STORE=2 \
                 -DSQLITE_EXTRA_INIT=sqlcipher_extra_init \
@@ -67,9 +71,10 @@ jobs:
           "
 
       - name: Empacotar artefatos
+        shell: pwsh
         run: |
           echo "🔹 Compactando arquivos compilados..."
-          powershell Compress-Archive -Path sqlcipher/sqlcipher.dll,sqlcipher/sqlcipher.exe -DestinationPath sqlcipher_build.zip
+          Compress-Archive -Path sqlcipher/sqlcipher.dll,sqlcipher/sqlcipher.exe -DestinationPath sqlcipher_build.zip
 
       - name: Publicar artefatos
         uses: actions/upload-artifact@v4
