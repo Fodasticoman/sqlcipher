@@ -13,38 +13,56 @@ jobs:
     runs-on: windows-latest
 
     steps:
-      - name: 🔹 Preparar ambiente
+      - name: Preparar ambiente
         shell: pwsh
         run: |
-          echo "🔹 Atualizando e instalando dependências..."
+          echo 'Instalando dependências MSYS2 e MinGW...'
           choco install msys2 --no-progress -y
           C:\tools\msys64\usr\bin\bash -lc "pacman -Sy --noconfirm mingw-w64-x86_64-toolchain mingw-w64-x86_64-openssl make autoconf"
 
-      - name: 🔹 Clonar SQLCipher
+      - name: Clonar SQLCipher
         shell: bash
         run: |
-          echo "🔹 Baixando SQLCipher versão ${{ github.event.inputs.tag }}"
+          echo "Baixando SQLCipher versão ${{ github.event.inputs.tag }}"
           git clone https://github.com/sqlcipher/sqlcipher.git
           cd sqlcipher
           git checkout ${{ github.event.inputs.tag }}
 
-      - name: ⚙️ Gerar sqlite3.c e shell.c
+      - name: Gerar sqlite3.c e shell.c
         shell: bash
         run: |
           cd sqlcipher
-          echo "🔹 Executando autoconf..."
+          echo "Executando autoconf..."
           ./configure --disable-tcl
-          echo "🔹 Gerando arquivos amalgamados..."
+          echo "Gerando arquivos amalgamados..."
           make sqlite3.c || true
           make shell.c || true
 
-      - name: 🧱 Compilar SQLCipher (DLL + EXE)
+      - name: Compilar SQLCipher (DLL + EXE)
         shell: pwsh
         run: |
+          echo 'Compilando SQLCipher...'
           $env:PATH = "C:\msys64\mingw64\bin;$env:PATH"
           cd sqlcipher
 
-          echo "🔹 Compilando sqlite3.c..."
+          echo 'Compilando sqlite3.c...'
           & gcc -O2 -DSQLITE_HAS_CODEC -DSQLCIPHER_CRYPTO_OPENSSL -DSQLITE_TEMP_STORE=2 -DSQLITE_THREADSAFE=1 "-DSQLITE_API=__declspec(dllexport)" -I"C:\msys64\mingw64\include" -c sqlite3.c -o sqlite3.o
           
-          echo "🔹 Gerando D
+          echo 'Gerando DLL...'
+          & gcc -shared -o libsqlcipher.dll sqlite3.o -lcrypto -lssl -lz -L"C:\msys64\mingw64\lib"
+          
+          echo 'Gerando EXE...'
+          & gcc -O2 shell.c -o sqlite3.exe -DSQLITE_HAS_CODEC -DSQLCIPHER_CRYPTO_OPENSSL -I. -L. -lsqlcipher -lcrypto -lssl -lz
+
+      - name: Empacotar artefatos
+        shell: pwsh
+        run: |
+          echo 'Empacotando arquivos gerados...'
+          cd sqlcipher
+          Compress-Archive -Path sqlite3.exe,libsqlcipher.dll,sqlite3.h,sqlite3ext.h -DestinationPath sqlcipher-windows.zip
+
+      - name: Publicar build
+        uses: actions/upload-artifact@v4
+        with:
+          name: sqlcipher-windows
+          path: sqlcipher/sqlcipher-windows.zip
