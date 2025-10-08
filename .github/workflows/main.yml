@@ -21,46 +21,57 @@ jobs:
           C:\msys64\usr\bin\bash -lc "pacman -Syu --noconfirm"
           C:\msys64\usr\bin\bash -lc "pacman -S --noconfirm mingw-w64-x86_64-gcc mingw-w64-x86_64-openssl make"
 
-      - name: 🔹 Gerar arquivos sqlite3.c e shell.c
+      - name: 🔹 Detectar e gerar sqlite3.c e shell.c
+        shell: pwsh
         run: |
+          echo "🔹 Procurando diretório que contém 'configure'..."
+          $configurePath = Get-ChildItem -Recurse -Filter configure | Select-Object -First 1
+          if (-not $configurePath) { throw "❌ Arquivo 'configure' não encontrado em lugar nenhum!" }
+
+          $configureDir = Split-Path $configurePath.FullName
+          echo "📁 Diretório detectado: $configureDir"
+
           echo "🔹 Gerando arquivos sqlite3.c e shell.c manualmente..."
-          C:\msys64\usr\bin\bash -lc "./configure --enable-tempstore=yes CFLAGS='-DSQLITE_HAS_CODEC' && make sqlite3.c shell.c"
+          C:\msys64\usr\bin\bash -lc "cd '$configureDir' && ./configure --enable-tempstore=yes CFLAGS='-DSQLITE_HAS_CODEC' && make sqlite3.c shell.c"
 
       - name: 🔹 Preparar pasta build
         shell: pwsh
         run: |
-          if (-not (Test-Path "build")) {
-            mkdir build
-          }
-          Copy-Item sqlite3.c shell.c build -Force
+          $srcDir = (Get-ChildItem -Recurse -Filter sqlite3.c | Select-Object -First 1).DirectoryName
+          if (-not $srcDir) { throw "❌ Não foi possível encontrar sqlite3.c" }
+
+          echo "📁 Copiando arquivos de: $srcDir"
+          if (-not (Test-Path "build")) { mkdir build }
+
+          Copy-Item "$srcDir\sqlite3.c" "$srcDir\shell.c" "$srcDir\sqlite3.h" "$srcDir\sqlite3ext.h" build -Force -ErrorAction SilentlyContinue
 
       - name: 🔹 Compilar SQLCipher (DLL + EXE)
         shell: pwsh
         run: |
           echo "🔹 Ajustando PATH..."
           $env:PATH = "C:\msys64\mingw64\bin;$env:PATH"
-          
+
           cd build
           echo "📂 Local atual: $(Get-Location)"
           echo "📄 Conteúdo da pasta build:"
           Get-ChildItem
-          
+
           $sqlite3Path = (Get-ChildItem -Filter sqlite3.c | Select-Object -First 1).FullName
           $shellPath   = (Get-ChildItem -Filter shell.c   | Select-Object -First 1).FullName
-          
+
           if (-not $sqlite3Path) { throw "❌ sqlite3.c não encontrado!" }
           if (-not $shellPath) { throw "❌ shell.c não encontrado!" }
-          
+
           echo "🔹 Compilando biblioteca principal (DLL)..."
           gcc -O2 -DSQLITE_HAS_CODEC -DSQLCIPHER_CRYPTO_OPENSSL -DSQLITE_TEMP_STORE=2 -DHAVE_STDINT_H -I. "$sqlite3Path" -shared -o sqlcipher.dll -L/mingw64/lib -lcrypto -lssl
-          
+
           echo "🔹 Compilando executável CLI..."
           gcc -O2 -DSQLITE_HAS_CODEC -DSQLCIPHER_CRYPTO_OPENSSL -DSQLITE_TEMP_STORE=2 -DHAVE_STDINT_H -I. "$shellPath" -o sqlcipher.exe -L/mingw64/lib -lcrypto -lssl
 
       - name: 🔹 Compactar artefatos
         shell: pwsh
         run: |
-          Compress-Archive -Path build\sqlcipher.dll, build\sqlcipher.exe -DestinationPath build\sqlcipher-windows.zip -Force
+          Compress-Archive -Path build\* -DestinationPath build\sqlcipher-windows.zip -Force
 
       - name: 🔹 Publicar artefatos (ZIP)
         uses: actions/upload-artifact@v4
