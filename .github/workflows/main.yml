@@ -26,16 +26,20 @@ jobs:
           echo "🔹 Gerando arquivos sqlite3.c e shell.c manualmente..."
           C:\msys64\usr\bin\bash -lc "./configure --enable-tempstore=yes CFLAGS='-DSQLITE_HAS_CODEC' && make sqlite3.c shell.c"
 
+      - name: 🔹 Preparar pasta build
+        shell: pwsh
+        run: |
+          if (-not (Test-Path "build")) {
+            mkdir build
+          }
+          Copy-Item sqlite3.c shell.c build -Force
+
       - name: 🔹 Compilar SQLCipher (DLL + EXE)
         shell: pwsh
         run: |
           echo "🔹 Ajustando PATH..."
           $env:PATH = "C:\msys64\mingw64\bin;$env:PATH"
-
-          if (-not (Test-Path "build")) {
-            throw "❌ Pasta 'build' não encontrada em: $(Get-Location)"
-          }
-
+          
           cd build
           echo "📂 Local atual: $(Get-Location)"
           echo "📄 Conteúdo da pasta build:"
@@ -53,8 +57,13 @@ jobs:
           echo "🔹 Compilando executável CLI..."
           gcc -O2 -DSQLITE_HAS_CODEC -DSQLCIPHER_CRYPTO_OPENSSL -DSQLITE_TEMP_STORE=2 -DHAVE_STDINT_H -I. "$shellPath" -o sqlcipher.exe -L/mingw64/lib -lcrypto -lssl
 
-      - name: 🔹 Publicar artefatos (EXE + DLL)
+      - name: 🔹 Compactar artefatos
+        shell: pwsh
+        run: |
+          Compress-Archive -Path build\sqlcipher.dll, build\sqlcipher.exe -DestinationPath build\sqlcipher-windows.zip -Force
+
+      - name: 🔹 Publicar artefatos (ZIP)
         uses: actions/upload-artifact@v4
         with:
-          name: sqlcipher-windows-build
-          path: build/*.exe
+          name: sqlcipher-windows
+          path: build/sqlcipher-windows.zip
