@@ -47,32 +47,33 @@ jobs:
       - name: 🔍 Verificar arquivos gerados
         shell: pwsh
         run: |
-          echo "🔍 Verificando se os arquivos foram gerados..."
-          Get-ChildItem -Path sqlcipher/build -Filter sqlite3.c -Recurse | ForEach-Object { $_.FullName }
-          Get-ChildItem -Path sqlcipher/build -Filter shell.c -Recurse | ForEach-Object { $_.FullName }
+          echo "🔍 Verificando arquivos gerados..."
+          Get-ChildItem -Recurse -Path sqlcipher | Where-Object { $_.Name -in @('sqlite3.c', 'shell.c') } | ForEach-Object { $_.FullName }
 
       - name: 🧱 Compilar SQLCipher (DLL + CLI)
         shell: pwsh
         run: |
           echo "🔹 Ajustando PATH..."
           $env:PATH = "C:\msys64\mingw64\bin;$env:PATH"
-          
-          # ⚠️ Caminho corrigido (sem pasta extra)
-          cd sqlcipher/build
-          
+
+          # ✅ Caminho fixado com verificação
+          cd sqlcipher
+          if (-not (Test-Path "build")) { throw "❌ Pasta 'build' não encontrada em: $(Get-Location)" }
+
+          cd build
           echo "📂 Local atual: $(Get-Location)"
-          echo "📄 Listando conteúdo atual:"
+          echo "📄 Conteúdo da pasta build:"
           Get-ChildItem
 
           $sqlite3Path = (Get-ChildItem -Filter sqlite3.c | Select-Object -First 1).FullName
           $shellPath   = (Get-ChildItem -Filter shell.c   | Select-Object -First 1).FullName
-          
+
           if (-not $sqlite3Path) { throw "❌ sqlite3.c não encontrado!" }
           if (-not $shellPath) { throw "❌ shell.c não encontrado!" }
-          
+
           echo "🔹 Compilando biblioteca principal (DLL)..."
           gcc -O2 -DSQLITE_HAS_CODEC -DSQLCIPHER_CRYPTO_OPENSSL -DSQLITE_TEMP_STORE=2 -DHAVE_STDINT_H -I. "$sqlite3Path" -shared -o sqlcipher.dll -L/mingw64/lib -lcrypto -lssl
-          
+
           echo "🔹 Compilando executável CLI..."
           gcc -O2 -DSQLITE_HAS_CODEC -DSQLCIPHER_CRYPTO_OPENSSL -DSQLITE_TEMP_STORE=2 -DHAVE_STDINT_H -I. "$shellPath" -o sqlcipher.exe -L/mingw64/lib -lcrypto -lssl
 
