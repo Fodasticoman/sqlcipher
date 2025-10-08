@@ -32,17 +32,18 @@ jobs:
           echo "🔹 Gerando arquivos sqlite3.c e shell.c manualmente..."
           $workDir = (Get-Location).Path + "\sqlcipher"
           C:\msys64\usr\bin\bash -lc "cd '${workDir.Replace('\', '/')}' && \
-            mkdir -p build && cd build && \
-            cp -r ../* . && \
+            mkdir -p build && \
+            find . -mindepth 1 -maxdepth 1 ! -name 'build' -exec cp -r {} build/ \; && \
+            cd build && \
             echo '🔹 Executando tclsh para gerar sqlite3.c...' && \
             tclsh ../tool/mksqlite3c.tcl > sqlite3.c && \
             echo '🔹 Copiando shell.c...' && \
             cp ../src/shell.c shell.c"
 
-      - name: 🔍 Listar arquivos gerados (.c)
+      - name: 🔍 Verificar arquivos gerados
         shell: pwsh
         run: |
-          echo "🔍 Verificando onde estão sqlite3.c e shell.c..."
+          echo "🔍 Procurando sqlite3.c e shell.c..."
           Get-ChildItem -Recurse -Filter sqlite3.c | ForEach-Object { $_.FullName }
           Get-ChildItem -Recurse -Filter shell.c | ForEach-Object { $_.FullName }
 
