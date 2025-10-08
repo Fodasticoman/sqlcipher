@@ -56,11 +56,12 @@ jobs:
           echo "🔹 Ajustando PATH..."
           $env:PATH = "C:\msys64\mingw64\bin;$env:PATH"
 
-          # ✅ Caminho fixado com verificação
-          cd sqlcipher
-          if (-not (Test-Path "build")) { throw "❌ Pasta 'build' não encontrada em: $(Get-Location)" }
+          # ✅ Caminho fixado corretamente
+          if (-not (Test-Path "sqlcipher/build")) {
+            throw "❌ Pasta 'build' não encontrada em: $(Get-Location)"
+          }
 
-          cd build
+          cd sqlcipher/build
           echo "📂 Local atual: $(Get-Location)"
           echo "📄 Conteúdo da pasta build:"
           Get-ChildItem
