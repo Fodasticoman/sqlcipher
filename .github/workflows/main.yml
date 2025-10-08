@@ -57,8 +57,12 @@ jobs:
           echo "🔹 Ajustando PATH..."
           $env:PATH = "C:\msys64\mingw64\bin;$env:PATH"
           
-          cd sqlcipher/build  # ✅ agora é o caminho correto
-          Write-Host "📂 Local atual: $(Get-Location)"
+          # ⚠️ Caminho corrigido (sem pasta extra)
+          cd sqlcipher/build
+          
+          echo "📂 Local atual: $(Get-Location)"
+          echo "📄 Listando conteúdo atual:"
+          Get-ChildItem
 
           $sqlite3Path = (Get-ChildItem -Filter sqlite3.c | Select-Object -First 1).FullName
           $shellPath   = (Get-ChildItem -Filter shell.c   | Select-Object -First 1).FullName
