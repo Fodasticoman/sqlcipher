@@ -1,95 +1,33 @@
-name: Build SQLCipher (Windows MinGW-w64)
-
-on:
-  workflow_dispatch:
-    inputs:
-      tag:
-        description: "SQLCipher tag (ex: v4.10.0)"
-        required: true
-        default: "v4.10.0"
-
-jobs:
-  build-win:
-    runs-on: windows-latest
-
-    steps:
-      - name: 🧩 Baixar código-fonte SQLCipher
-        run: |
-          git clone https://github.com/sqlcipher/sqlcipher.git
-          cd sqlcipher
-          git checkout ${{ github.event.inputs.tag }}
-
-      - name: ⚙️ Instalar MSYS2 e dependências
-        shell: pwsh
-        run: |
-          echo "🔹 Instalando MSYS2..."
-          choco install msys2 --no-progress -y
-          echo "🔹 Instalando pacotes necessários..."
-          C:\msys64\usr\bin\bash -lc 'pacman -S --noconfirm --needed mingw-w64-x86_64-gcc mingw-w64-x86_64-openssl make autoconf automake libtool pkgconf tcl rsync'
-
-      - name: 🏗️ Gerar arquivos sqlite3.c e shell.c manualmente
-        shell: pwsh
-        run: |
-          echo "🔹 Gerando arquivos sqlite3.c e shell.c manualmente..."
-          $repoDir = Join-Path (Get-Location).Path "sqlcipher"
-          $bashDir = $repoDir.Replace('\', '/')
-          C:\msys64\usr\bin\bash -lc "cd \"$bashDir\" && \
-            mkdir -p build && \
-            echo '🔹 Copiando arquivos necessários...' && \
-            rsync -a --exclude 'build' ./ ./build/ && \
-            cd build && \
-            echo '🔹 Executando tclsh para gerar sqlite3.c...' && \
-            tclsh ../tool/mksqlite3c.tcl > sqlite3.c && \
-            echo '🔹 Copiando shell.c...' && \
-            cp ../src/shell.c shell.c && \
-            echo '✅ sqlite3.c e shell.c gerados com sucesso!'"
-
-      - name: 🔍 Verificar arquivos gerados
-        shell: pwsh
-        run: |
-          echo "🔍 Verificando arquivos gerados..."
-          Get-ChildItem -Recurse -Path sqlcipher | Where-Object { $_.Name -in @('sqlite3.c', 'shell.c') } | ForEach-Object { $_.FullName }
-
-      - name: 🧱 Compilar SQLCipher (DLL + CLI)
-        shell: pwsh
-        run: |
-          echo "🔹 Ajustando PATH..."
-          $env:PATH = "C:\msys64\mingw64\bin;$env:PATH"
-
-          # ✅ Caminho fixado corretamente
-          if (-not (Test-Path "sqlcipher/build")) {
-            throw "❌ Pasta 'build' não encontrada em: $(Get-Location)"
-          }
-
-          cd sqlcipher/build
-          echo "📂 Local atual: $(Get-Location)"
-          echo "📄 Conteúdo da pasta build:"
-          Get-ChildItem
-
-          $sqlite3Path = (Get-ChildItem -Filter sqlite3.c | Select-Object -First 1).FullName
-          $shellPath   = (Get-ChildItem -Filter shell.c   | Select-Object -First 1).FullName
-
-          if (-not $sqlite3Path) { throw "❌ sqlite3.c não encontrado!" }
-          if (-not $shellPath) { throw "❌ shell.c não encontrado!" }
-
-          echo "🔹 Compilando biblioteca principal (DLL)..."
-          gcc -O2 -DSQLITE_HAS_CODEC -DSQLCIPHER_CRYPTO_OPENSSL -DSQLITE_TEMP_STORE=2 -DHAVE_STDINT_H -I. "$sqlite3Path" -shared -o sqlcipher.dll -L/mingw64/lib -lcrypto -lssl
-
-          echo "🔹 Compilando executável CLI..."
-          gcc -O2 -DSQLITE_HAS_CODEC -DSQLCIPHER_CRYPTO_OPENSSL -DSQLITE_TEMP_STORE=2 -DHAVE_STDINT_H -I. "$shellPath" -o sqlcipher.exe -L/mingw64/lib -lcrypto -lssl
-
-      - name: 📦 Compactar arquivos compilados
-        shell: pwsh
-        run: |
-          echo "🔹 Compactando arquivos compilados..."
-          if (!(Test-Path "sqlcipher/build/sqlcipher.dll")) { throw "❌ sqlcipher.dll não encontrado!" }
-          if (!(Test-Path "sqlcipher/build/sqlcipher.exe")) { throw "❌ sqlcipher.exe não encontrado!" }
-
-          Compress-Archive -Path sqlcipher/build/sqlcipher.dll,sqlcipher/build/sqlcipher.exe,sqlcipher/sqlite3.h,sqlcipher/sqlite3ext.h -DestinationPath sqlcipher-windows.zip
-          echo "✅ Arquivo compactado com sucesso."
-
-      - name: 📤 Upload do build gerado
-        uses: actions/upload-artifact@v4
-        with:
-          name: sqlcipher-windows
-          path: sqlcipher-windows.zip
+Run echo "🔹 Ajustando PATH..."
+  echo "🔹 Ajustando PATH..."
+  $env:PATH = "C:\msys64\mingw64\bin;$env:PATH"
+  
+  # ✅ Caminho fixado corretamente
+  if (-not (Test-Path "sqlcipher/build")) {
+    throw "❌ Pasta 'build' não encontrada em: $(Get-Location)"
+  }
+  
+  cd sqlcipher/build
+  echo "📂 Local atual: $(Get-Location)"
+  echo "📄 Conteúdo da pasta build:"
+  Get-ChildItem
+  
+  $sqlite3Path = (Get-ChildItem -Filter sqlite3.c | Select-Object -First 1).FullName
+  $shellPath   = (Get-ChildItem -Filter shell.c   | Select-Object -First 1).FullName
+  
+  if (-not $sqlite3Path) { throw "❌ sqlite3.c não encontrado!" }
+  if (-not $shellPath) { throw "❌ shell.c não encontrado!" }
+  
+  echo "🔹 Compilando biblioteca principal (DLL)..."
+  gcc -O2 -DSQLITE_HAS_CODEC -DSQLCIPHER_CRYPTO_OPENSSL -DSQLITE_TEMP_STORE=2 -DHAVE_STDINT_H -I. "$sqlite3Path" -shared -o sqlcipher.dll -L/mingw64/lib -lcrypto -lssl
+  
+  echo "🔹 Compilando executável CLI..."
+  gcc -O2 -DSQLITE_HAS_CODEC -DSQLCIPHER_CRYPTO_OPENSSL -DSQLITE_TEMP_STORE=2 -DHAVE_STDINT_H -I. "$shellPath" -o sqlcipher.exe -L/mingw64/lib -lcrypto -lssl
+  shell: C:\Program Files\PowerShell\7\pwsh.EXE -command ". '{0}'"
+🔹 Ajustando PATH...
+Exception: D:\a\_temp\edbc684b-a457-48ad-ba9a-534ad766df61.ps1:7
+Line |
+   7 |    throw "❌ Pasta 'build' não encontrada em: $(Get-Location)"
+     |    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+     | ❌ Pasta 'build' não encontrada em: D:\a\sqlcipher\sqlcipher
+Error: Process completed with exit code 1.
