@@ -19,25 +19,24 @@ jobs:
       - name: 🔹 Instalar dependências MSYS2 e OpenSSL
         run: |
           C:\msys64\usr\bin\bash -lc "pacman -Syu --noconfirm"
-          C:\msys64\usr\bin\bash -lc "pacman -S --noconfirm mingw-w64-x86_64-gcc mingw-w64-x86_64-openssl"
+          C:\msys64\usr\bin\bash -lc "pacman -S --noconfirm mingw-w64-x86_64-gcc mingw-w64-x86_64-openssl make"
 
       - name: 🔹 Gerar arquivos sqlite3.c e shell.c
         run: |
           echo "🔹 Gerando arquivos sqlite3.c e shell.c manualmente..."
-          C:\msys64\usr\bin\bash -lc "cd sqlcipher && ./configure --enable-tempstore=yes CFLAGS='-DSQLITE_HAS_CODEC' && make sqlite3.c shell.c"
+          C:\msys64\usr\bin\bash -lc "./configure --enable-tempstore=yes CFLAGS='-DSQLITE_HAS_CODEC' && make sqlite3.c shell.c"
 
       - name: 🔹 Compilar SQLCipher (DLL + EXE)
         shell: pwsh
         run: |
           echo "🔹 Ajustando PATH..."
           $env:PATH = "C:\msys64\mingw64\bin;$env:PATH"
-          
-          # ✅ Caminho correto — não entrar duas vezes
-          if (-not (Test-Path "sqlcipher/build")) {
+
+          if (-not (Test-Path "build")) {
             throw "❌ Pasta 'build' não encontrada em: $(Get-Location)"
           }
 
-          cd sqlcipher/build
+          cd build
           echo "📂 Local atual: $(Get-Location)"
           echo "📄 Conteúdo da pasta build:"
           Get-ChildItem
@@ -54,8 +53,8 @@ jobs:
           echo "🔹 Compilando executável CLI..."
           gcc -O2 -DSQLITE_HAS_CODEC -DSQLCIPHER_CRYPTO_OPENSSL -DSQLITE_TEMP_STORE=2 -DHAVE_STDINT_H -I. "$shellPath" -o sqlcipher.exe -L/mingw64/lib -lcrypto -lssl
 
-      - name: 🔹 Publicar artefatos
+      - name: 🔹 Publicar artefatos (EXE + DLL)
         uses: actions/upload-artifact@v4
         with:
           name: sqlcipher-windows-build
-          path: sqlcipher/build/*.exe
+          path: build/*.exe
