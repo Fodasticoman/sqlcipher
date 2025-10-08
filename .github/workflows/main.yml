@@ -13,13 +13,32 @@ jobs:
     runs-on: windows-latest
 
     steps:
-      - name: 🔹 Checkout do repositório
+      - name: 📥 Clonar repositório
         uses: actions/checkout@v4
 
-      - name: 🔹 Instalar dependências MSYS2 e OpenSSL
+      - name: 🧩 Instalar MSYS2 e dependências
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          install: >-
+            base-devel
+            mingw-w64-x86_64-gcc
+            mingw-w64-x86_64-openssl
+            mingw-w64-x86_64-make
+            autoconf
+            automake
+            libtool
+            tcl
+
+      - name: 📦 Baixar SQLCipher
+        shell: pwsh
         run: |
-          C:\msys64\usr\bin\bash -lc "pacman -Syu --noconfirm"
-          C:\msys64\usr\bin\bash -lc "pacman -S --noconfirm mingw-w64-x86_64-gcc mingw-w64-x86_64-openssl make"
+          $tag = "${{ github.event.inputs.tag }}"
+          echo "🔹 Baixando SQLCipher versão $tag..."
+          Invoke-WebRequest -Uri "https://github.com/sqlcipher/sqlcipher/archive/refs/tags/$tag.zip" -OutFile "sqlcipher.zip"
+          Expand-Archive sqlcipher.zip -DestinationPath .
+          Rename-Item -Path "sqlcipher-$tag" -NewName "sqlcipher"
+          echo "✅ Extração concluída!"
 
       - name: 🔹 Detectar e gerar sqlite3.c e shell.c
         shell: pwsh
@@ -31,50 +50,39 @@ jobs:
           $configureDir = Split-Path $configurePath.FullName
           echo "📁 Diretório detectado: $configureDir"
 
+          echo "🔹 Garantindo que gcc e make estejam disponíveis no bash..."
+          C:\msys64\usr\bin\bash -lc "echo 'gcc path:' && which gcc || echo '⚠️ gcc não encontrado' && echo 'make path:' && which make || echo '⚠️ make não encontrado'"
+
           echo "🔹 Gerando arquivos sqlite3.c e shell.c manualmente..."
-          C:\msys64\usr\bin\bash -lc "cd '$configureDir' && ./configure --enable-tempstore=yes CFLAGS='-DSQLITE_HAS_CODEC' && make sqlite3.c shell.c"
+          C:\msys64\usr\bin\bash -lc "export PATH=/mingw64/bin:/usr/bin:\$PATH && cd '$configureDir' && ./configure --enable-tempstore=yes CFLAGS='-DSQLITE_HAS_CODEC' && make sqlite3.c shell.c"
 
-      - name: 🔹 Preparar pasta build
-        shell: pwsh
-        run: |
-          $srcDir = (Get-ChildItem -Recurse -Filter sqlite3.c | Select-Object -First 1).DirectoryName
-          if (-not $srcDir) { throw "❌ Não foi possível encontrar sqlite3.c" }
-
-          echo "📁 Copiando arquivos de: $srcDir"
-          if (-not (Test-Path "build")) { mkdir build }
-
-          Copy-Item "$srcDir\sqlite3.c" "$srcDir\shell.c" "$srcDir\sqlite3.h" "$srcDir\sqlite3ext.h" build -Force -ErrorAction SilentlyContinue
-
-      - name: 🔹 Compilar SQLCipher (DLL + EXE)
+      - name: ⚙️ Compilar SQLCipher (DLL e EXE)
         shell: pwsh
         run: |
           echo "🔹 Ajustando PATH..."
           $env:PATH = "C:\msys64\mingw64\bin;$env:PATH"
 
-          cd build
-          echo "📂 Local atual: $(Get-Location)"
-          echo "📄 Conteúdo da pasta build:"
-          Get-ChildItem
-
-          $sqlite3Path = (Get-ChildItem -Filter sqlite3.c | Select-Object -First 1).FullName
-          $shellPath   = (Get-ChildItem -Filter shell.c   | Select-Object -First 1).FullName
-
-          if (-not $sqlite3Path) { throw "❌ sqlite3.c não encontrado!" }
-          if (-not $shellPath) { throw "❌ shell.c não encontrado!" }
+          cd sqlcipher
+          if (-not (Test-Path "sqlite3.c")) { throw "❌ Arquivo sqlite3.c não encontrado!" }
+          if (-not (Test-Path "shell.c")) { throw "❌ Arquivo shell.c não encontrado!" }
 
           echo "🔹 Compilando biblioteca principal (DLL)..."
-          gcc -O2 -DSQLITE_HAS_CODEC -DSQLCIPHER_CRYPTO_OPENSSL -DSQLITE_TEMP_STORE=2 -DHAVE_STDINT_H -I. "$sqlite3Path" -shared -o sqlcipher.dll -L/mingw64/lib -lcrypto -lssl
+          gcc -O2 -DSQLITE_HAS_CODEC -DSQLCIPHER_CRYPTO_OPENSSL -DSQLITE_TEMP_STORE=2 -DHAVE_STDINT_H -I. sqlite3.c -shared -o sqlcipher.dll -L/mingw64/lib -lcrypto -lssl
 
           echo "🔹 Compilando executável CLI..."
-          gcc -O2 -DSQLITE_HAS_CODEC -DSQLCIPHER_CRYPTO_OPENSSL -DSQLITE_TEMP_STORE=2 -DHAVE_STDINT_H -I. "$shellPath" -o sqlcipher.exe -L/mingw64/lib -lcrypto -lssl
+          gcc -O2 -DSQLITE_HAS_CODEC -DSQLCIPHER_CRYPTO_OPENSSL -DSQLITE_TEMP_STORE=2 -DHAVE_STDINT_H -I. shell.c -o sqlcipher.exe -L/mingw64/lib -lcrypto -lssl
 
-      - name: 🔹 Compactar artefatos
-        shell: pwsh
+          echo "✅ Compilação concluída!"
+
+      - name: 📦 Criar artefato ZIP
         run: |
-          Compress-Archive -Path build\* -DestinationPath build\sqlcipher-windows.zip -Force
+          mkdir build
+          copy sqlcipher\sqlcipher.dll build\
+          copy sqlcipher\sqlcipher.exe build\
+          Compress-Archive -Path build\* -DestinationPath sqlcipher-windows.zip
 
-      - name: 🔹 Publicar artefatos (ZIP)
+      - name: 📤 Publicar artefato
         uses: actions/upload-artifact@v4
         with:
           name: sqlcipher-windows
-          path: build/sqlcipher-windows.zip
+          path: sqlcipher-windows.zip
