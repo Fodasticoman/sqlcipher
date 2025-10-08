@@ -27,28 +27,30 @@ jobs:
           echo "🔹 Instalando pacotes necessários..."
           C:\msys64\usr\bin\bash -lc 'pacman -S --noconfirm --needed mingw-w64-x86_64-gcc mingw-w64-x86_64-openssl make autoconf automake libtool pkgconf tcl rsync'
 
-      - name: 🏗️ Gerar arquivos sqlite3.c e shell.c manualmente
+      - name: 🏗️ Gerar arquivos sqlite3.c e shell.c
         shell: pwsh
         run: |
-          echo "🔹 Gerando arquivos sqlite3.c e shell.c manualmente..."
+          echo "🔹 Gerando arquivos sqlite3.c e shell.c..."
           $repoDir = Join-Path (Get-Location).Path "sqlcipher"
+          Write-Host "📂 Diretório atual: $repoDir"
           $bashDir = $repoDir.Replace('\', '/')
+          
+          # 🔹 Tudo será gerado dentro de D:/a/sqlcipher/sqlcipher/build
           C:\msys64\usr\bin\bash -lc "cd \"$bashDir\" && \
             mkdir -p build && \
-            echo '🔹 Copiando arquivos necessários...' && \
+            echo '🔹 Copiando arquivos para build...' && \
             rsync -a --exclude 'build' ./ ./build/ && \
             cd build && \
-            echo '🔹 Executando tclsh para gerar sqlite3.c...' && \
+            echo '🔹 Executando tclsh...' && \
             tclsh ../tool/mksqlite3c.tcl > sqlite3.c && \
-            echo '🔹 Copiando shell.c...' && \
             cp ../src/shell.c shell.c && \
             echo '✅ sqlite3.c e shell.c gerados com sucesso!'"
 
-      - name: 🔍 Verificar arquivos gerados
+      - name: 🔍 Verificar estrutura de diretórios
         shell: pwsh
         run: |
-          echo "🔍 Verificando arquivos gerados..."
-          Get-ChildItem -Recurse -Path sqlcipher | Where-Object { $_.Name -in @('sqlite3.c', 'shell.c') } | ForEach-Object { $_.FullName }
+          echo "🔍 Estrutura de diretórios SQLCipher:"
+          tree sqlcipher /F | Out-String -Width 200
 
       - name: 🧱 Compilar SQLCipher (DLL + CLI)
         shell: pwsh
@@ -56,7 +58,8 @@ jobs:
           echo "🔹 Ajustando PATH..."
           $env:PATH = "C:\msys64\mingw64\bin;$env:PATH"
 
-          # ✅ Agora o caminho está 100% correto
+          # ✅ Agora o caminho é fixo e correto
+          cd sqlcipher
           if (-not (Test-Path "build")) {
             throw "❌ Pasta 'build' não encontrada em: $(Get-Location)"
           }
@@ -82,10 +85,10 @@ jobs:
         shell: pwsh
         run: |
           echo "🔹 Compactando arquivos compilados..."
-          if (!(Test-Path "build/sqlcipher.dll")) { throw "❌ sqlcipher.dll não encontrado!" }
-          if (!(Test-Path "build/sqlcipher.exe")) { throw "❌ sqlcipher.exe não encontrado!" }
+          if (!(Test-Path "sqlcipher/build/sqlcipher.dll")) { throw "❌ sqlcipher.dll não encontrado!" }
+          if (!(Test-Path "sqlcipher/build/sqlcipher.exe")) { throw "❌ sqlcipher.exe não encontrado!" }
 
-          Compress-Archive -Path build/sqlcipher.dll,build/sqlcipher.exe,../sqlcipher/sqlite3.h,../sqlcipher/sqlite3ext.h -DestinationPath sqlcipher-windows.zip
+          Compress-Archive -Path sqlcipher/build/sqlcipher.dll,sqlcipher/build/sqlcipher.exe,sqlcipher/sqlite3.h,sqlcipher/sqlite3ext.h -DestinationPath sqlcipher-windows.zip
           echo "✅ Arquivo compactado com sucesso."
 
       - name: 📤 Upload do build gerado
