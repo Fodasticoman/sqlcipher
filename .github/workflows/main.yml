@@ -31,53 +31,6 @@ jobs:
         run: |
           echo "🔹 Gerando arquivos sqlite3.c e shell.c manualmente..."
           $workDir = (Get-Location).Path + "\sqlcipher"
-          C:\msys64\usr\bin\bash -lc "cd '${workDir.Replace('\', '/')}' && \
-            mkdir -p build && \
-            find . -mindepth 1 -maxdepth 1 ! -name 'build' -exec cp -r {} build/ \; && \
-            cd build && \
-            echo '🔹 Executando tclsh para gerar sqlite3.c...' && \
-            tclsh ../tool/mksqlite3c.tcl > sqlite3.c && \
-            echo '🔹 Copiando shell.c...' && \
-            cp ../src/shell.c shell.c"
-
-      - name: 🔍 Verificar arquivos gerados
-        shell: pwsh
-        run: |
-          echo "🔍 Procurando sqlite3.c e shell.c..."
-          Get-ChildItem -Recurse -Filter sqlite3.c | ForEach-Object { $_.FullName }
-          Get-ChildItem -Recurse -Filter shell.c | ForEach-Object { $_.FullName }
-
-      - name: 🧱 Compilar SQLCipher (DLL + CLI)
-        shell: pwsh
-        run: |
-          echo "🔹 Ajustando PATH..."
-          $env:PATH = "C:\msys64\mingw64\bin;$env:PATH"
-
-          cd sqlcipher\build
-          $sqlite3Path = (Get-ChildItem -Recurse -Filter sqlite3.c | Select-Object -First 1).FullName
-          $shellPath   = (Get-ChildItem -Recurse -Filter shell.c   | Select-Object -First 1).FullName
-
-          if (-not $sqlite3Path) { throw "❌ sqlite3.c não encontrado!" }
-          if (-not $shellPath) { throw "❌ shell.c não encontrado!" }
-
-          echo "🔹 Compilando biblioteca principal (DLL)..."
-          gcc -O2 -DSQLITE_HAS_CODEC -DSQLCIPHER_CRYPTO_OPENSSL -DSQLITE_TEMP_STORE=2 -DHAVE_STDINT_H -I. "$sqlite3Path" -shared -o sqlcipher.dll -L/mingw64/lib -lcrypto -lssl
-
-          echo "🔹 Compilando executável CLI..."
-          gcc -O2 -DSQLITE_HAS_CODEC -DSQLCIPHER_CRYPTO_OPENSSL -DSQLITE_TEMP_STORE=2 -DHAVE_STDINT_H -I. "$shellPath" -o sqlcipher.exe -L/mingw64/lib -lcrypto -lssl
-
-      - name: 📦 Compactar arquivos compilados
-        shell: pwsh
-        run: |
-          echo "🔹 Compactando arquivos compilados..."
-          if (!(Test-Path "sqlcipher/build/sqlcipher.dll")) { throw "❌ sqlcipher.dll não encontrado!" }
-          if (!(Test-Path "sqlcipher/build/sqlcipher.exe")) { throw "❌ sqlcipher.exe não encontrado!" }
-
-          Compress-Archive -Path sqlcipher/build/sqlcipher.dll,sqlcipher/build/sqlcipher.exe,sqlcipher/sqlite3.h,sqlcipher/sqlite3ext.h -DestinationPath sqlcipher-windows.zip
-          echo "✅ Arquivo compactado com sucesso."
-
-      - name: 📤 Upload do build gerado
-        uses: actions/upload-artifact@v4
-        with:
-          name: sqlcipher-windows
-          path: sqlcipher-windows.zip
+          $bashDir = $workDir.Replace('\', '/')
+          C:\msys64\usr\bin\bash -lc "cd '$bashDir' && \
+            mkdir -p b
