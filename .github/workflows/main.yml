@@ -8,8 +8,8 @@ jobs:
     runs-on: windows-latest
 
     env:
-      MSYSTEM: MINGW64
       TAG: v4.10.0
+      MSYSTEM: MINGW64
       MSYS2_ARG_CONV_EXCL: "*"
 
     steps:
@@ -24,17 +24,13 @@ jobs:
             mingw-w64-x86_64-openssl
             mingw-w64-x86_64-zlib
 
-      - name: 🔹 Clonar SQLCipher e compilar
+      - name: 🔹 Clonar e compilar SQLCipher
         shell: msys2 {0}
         run: |
           set -euo pipefail
 
           echo "🔹 Clonando SQLCipher tag: $TAG"
-          if [ -d sqlcipher ]; then
-            echo "🧹 Limpando diretório antigo..."
-            rm -rf sqlcipher
-          fi
-
+          rm -rf sqlcipher || true
           git clone https://github.com/sqlcipher/sqlcipher.git sqlcipher
           cd sqlcipher
           git fetch --tags --quiet || true
@@ -46,6 +42,7 @@ jobs:
           install_dir="$(pwd)/build/install"
           mkdir -p "$install_dir"
 
+          # ✅ Flags completas (com init/shutdown corretos)
           export CFLAGS="-O2 \
             -DSQLITE_HAS_CODEC \
             -DSQLCIPHER_CRYPTO_OPENSSL \
@@ -63,12 +60,11 @@ jobs:
           echo "🔹 Executando ./configure..."
           ./configure \
             --prefix="$install_dir" \
-            CFLAGS="$CFLAGS" \
-            LDFLAGS="$LDFLAGS" \
-            --enable-tempstore=yes \
             --enable-shared \
             --enable-static \
             --disable-tcl \
+            CFLAGS="$CFLAGS" \
+            LDFLAGS="$LDFLAGS" \
             || { echo "⚠️ configure falhou"; exit 1; }
 
           echo "🔹 Compilando com make..."
