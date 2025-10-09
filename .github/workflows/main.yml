@@ -25,6 +25,8 @@ jobs:
           msystem: MINGW64
           update: true
           install: |
+            git
+            base-devel
             mingw-w64-x86_64-toolchain
             mingw-w64-x86_64-openssl
             mingw-w64-x86_64-zlib
@@ -41,9 +43,10 @@ jobs:
         run: |
           echo "=== msys info ==="
           uname -a
-          gcc --version || true
-          pacman -Qi mingw-w64-x86_64-openssl || true
+          git --version
+          gcc --version
           which tclsh || true
+          pacman -Qi mingw-w64-x86_64-openssl || true
 
       - name: Build SQLCipher (configure / make / make install)
         id: build
