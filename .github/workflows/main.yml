@@ -1,54 +1,32 @@
-name: Build SQLCipher (Static)
+set -euo pipefail
 
-on:
-  workflow_dispatch:
+echo "🔹 Clonando SQLCipher tag: $TAG"
+git clone https://github.com/sqlcipher/sqlcipher.git
+cd sqlcipher
+git checkout "$TAG"
 
-jobs:
-  build-sqlcipher:
-    runs-on: windows-latest
+echo "🔹 Configurando build estático..."
 
-    steps:
-      - name: 🧹 Limpar workspace
-        run: |
-          Remove-Item * -Recurse -Force -ErrorAction SilentlyContinue
+# ⚙️ Flags de compilação — sem aspas internas
+export CFLAGS=-O2\ -DSQLITE_HAS_CODEC\ -DSQLCIPHER_CRYPTO_OPENSSL\ -DSQLITE_THREADSAFE=1\ -DSQLITE_TEMP_STORE=2\ -I/mingw64/include
+export LDFLAGS=-static\ -L/mingw64/lib\ -lssl\ -lcrypto\ -lz\ -lws2_32\ -lgdi32\ -lcrypt32
 
-      - name: 🧩 Instalar MSYS2 e dependências
-        uses: msys2/setup-msys2@v2
-        with:
-          update: true
-          install: >-
-            git
-            mingw-w64-x86_64-gcc
-            make
-            mingw-w64-x86_64-openssl
-            zlib
-          msystem: MINGW64
+echo "CFLAGS: $CFLAGS"
+echo "LDFLAGS: $LDFLAGS"
 
-      - name: 🔹 Clonar e compilar SQLCipher (build estático)
-        shell: msys2 {0}
-        env:
-          TAG: v4.10.0
-        run: |
-          set -euo pipefail
-          echo "🔹 Clonando SQLCipher tag: $TAG"
+# ⚙️ Executa configure passando as flags como variáveis
+./configure \
+  --enable-shared \
+  --disable-tcl \
+  CFLAGS="$CFLAGS" \
+  LDFLAGS="$LDFLAGS" \
+  || { echo '⚠️ configure falhou'; cat config.log | head -n 50 || true; exit 1; }
 
-          git clone https://github.com/sqlcipher/sqlcipher.git
-          cd sqlcipher
-          git checkout "$TAG"
+echo "🔹 Compilando..."
+make -j"$(nproc)" || { echo '❌ make falhou'; exit 1; }
 
-          echo "🔹 Configurando build estático..."
-          export CFLAGS="-O2 -DSQLITE_HAS_CODEC -DSQLCIPHER_CRYPTO_OPENSSL -DSQLITE_THREADSAFE=1 -DSQLITE_TEMP_STORE=2 -I/mingw64/include"
-          export LDFLAGS="-static -L/mingw64/lib -lssl -lcrypto -lz -lws2_32 -lgdi32 -lcrypt32"
+echo "🔹 Copiando build final..."
+mkdir -p ../build-output
+cp sqlite3 ../build-output/sqlcipher.exe
 
-          ./configure --enable-shared --disable-tcl || { echo '⚠️ configure falhou'; exit 1; }
-          make -j"$(nproc)" || { echo '❌ make falhou'; exit 1; }
-
-          echo "🔹 Build finalizando..."
-          mkdir -p ../build-output
-          cp sqlite3 ../build-output/sqlcipher.exe
-
-      - name: 📦 Publicar binário
-        uses: actions/upload-artifact@v4
-        with:
-          name: sqlcipher-static
-          path: build-output/sqlcipher.exe
+echo "✅ Build finalizado! Binário pronto em: build-output/sqlcipher.exe"
