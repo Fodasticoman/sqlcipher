@@ -1,117 +1,87 @@
-name: Build SQLCipher (Windows - MSYS2/MINGW64)
+name: Build SQLCipher (Windows)
 
 on:
   workflow_dispatch:
-    inputs:
-      tag:
-        description: 'SQLCipher tag to build (e.g. v4.10.0)'
-        required: true
-        default: 'v4.10.0'
 
 jobs:
-  build-windows:
-    name: Build on windows-latest (MSYS2/MINGW64)
+  build-sqlcipher:
     runs-on: windows-latest
+
     env:
-      MSYS2_ARG_CONV_EXCL: '*'
+      MSYSTEM: MINGW64
+      TAG: v4.10.0
+      MSYS2_ARG_CONV_EXCL: "*"
 
     steps:
-      - name: Checkout this repository (workflow)
-        uses: actions/checkout@v4
-
-      - name: Setup MSYS2 (MINGW64) and install deps
+      - name: 🔹 Instalar MSYS2 e dependências
         uses: msys2/setup-msys2@v2
         with:
-          msystem: MINGW64
           update: true
-          install: |
+          install: >-
             git
-            base-devel
-            mingw-w64-x86_64-toolchain
+            make
+            mingw-w64-x86_64-gcc
             mingw-w64-x86_64-openssl
             mingw-w64-x86_64-zlib
-            mingw-w64-x86_64-tcl
-            mingw-w64-x86_64-pkg-config
-            autoconf
-            automake
-            make
-            perl
-          path-type: minimal
 
-      - name: Show MSYS2 / tool versions (debug)
+      - name: 🔹 Clonar SQLCipher e compilar
         shell: msys2 {0}
-        run: |
-          echo "=== msys info ==="
-          uname -a
-          git --version
-          gcc --version
-          which tclsh || true
-          pacman -Qi mingw-w64-x86_64-openssl || true
-
-      - name: Build SQLCipher (configure / make / make install)
-        id: build
-        shell: msys2 {0}
-        env:
-          TAG: ${{ github.event.inputs.tag }}
         run: |
           set -euo pipefail
 
-          echo "🔹 Building SQLCipher tag: $TAG"
+          echo "🔹 Clonando SQLCipher tag: $TAG"
           if [ -d sqlcipher ]; then
-            echo "sqlcipher dir already exists — removing for a clean clone"
+            echo "🧹 Limpando diretório antigo..."
             rm -rf sqlcipher
           fi
 
           git clone https://github.com/sqlcipher/sqlcipher.git sqlcipher
           cd sqlcipher
-
           git fetch --tags --quiet || true
-          if git rev-parse --verify --quiet "$TAG"; then
-            git checkout "$TAG"
-          else
-            git checkout "tags/$TAG" || git checkout "$TAG" || true
-          fi
+          git checkout "$TAG" || git checkout "tags/$TAG" || true
 
-          echo "=> Current commit:"
-          git rev-parse --short HEAD || true
-          echo "=> Listing top-level files:"
-          ls -la
+          echo "✅ Repositório pronto (tag $TAG)"
+          git rev-parse --short HEAD
 
           install_dir="$(pwd)/build/install"
           mkdir -p "$install_dir"
 
-          export CFLAGS="-O2 -DSQLITE_HAS_CODEC -DSQLCIPHER_CRYPTO_OPENSSL -DSQLITE_THREADSAFE=1 -DSQLITE_TEMP_STORE=2 -I/mingw64/include"
+          export CFLAGS="-O2 \
+            -DSQLITE_HAS_CODEC \
+            -DSQLCIPHER_CRYPTO_OPENSSL \
+            -DSQLITE_THREADSAFE=1 \
+            -DSQLITE_TEMP_STORE=2 \
+            -DSQLITE_EXTRA_INIT=sqlcipher_extra_init \
+            -DSQLITE_EXTRA_SHUTDOWN=sqlcipher_extra_shutdown \
+            -I/mingw64/include"
+
           export LDFLAGS="-L/mingw64/lib -lssl -lcrypto -lz"
 
           echo "CFLAGS: $CFLAGS"
           echo "LDFLAGS: $LDFLAGS"
 
-          echo "🔹 Running configure..."
-          ./configure --prefix="$install_dir" CFLAGS="$CFLAGS" LDFLAGS="$LDFLAGS" --enable-shared --enable-static --disable-tcl \
-            || { echo "⚠️ configure failed; dumping config.log"; [ -f config.log ] && sed -n '1,200p' config.log || true; exit 1; }
+          echo "🔹 Executando ./configure..."
+          ./configure \
+            --prefix="$install_dir" \
+            CFLAGS="$CFLAGS" \
+            LDFLAGS="$LDFLAGS" \
+            --enable-tempstore=yes \
+            --enable-shared \
+            --enable-static \
+            --disable-tcl \
+            || { echo "⚠️ configure falhou"; exit 1; }
 
-          echo "🔹 Running make..."
-          make -j"$(nproc)" || { echo "❌ make failed"; exit 1; }
+          echo "🔹 Compilando com make..."
+          make -j"$(nproc)" || { echo "❌ make falhou"; exit 1; }
 
-          echo "🔹 Running make install..."
-          make install || { echo "❌ make install failed"; exit 1; }
+          echo "🔹 Instalando..."
+          make install || { echo "❌ make install falhou"; exit 1; }
 
-          echo "🔹 Build/install finished. Artifacts:"
-          echo " - bin:"
-          ls -la "$install_dir/bin" || true
-          echo " - lib:"
-          ls -la "$install_dir/lib" || true
-          echo " - include:"
-          ls -la "$install_dir/include" || true
+          echo "✅ Build completo!"
+          echo "📦 Artefatos instalados em: $install_dir"
 
-      - name: Upload build artifacts
+      - name: 📤 Upload de artefatos (bin, lib, include)
         uses: actions/upload-artifact@v4
         with:
-          name: sqlcipher-windows-artifacts
-          path: |
-            sqlcipher/build/install/bin/**
-            sqlcipher/build/install/lib/**
-            sqlcipher/build/install/include/**
-
-      - name: Print success message
-        run: echo "✅ SQLCipher build job finished — artifacts uploaded as 'sqlcipher-windows-artifacts'."
+          name: sqlcipher-windows-build
+          path: sqlcipher/build/install/
