@@ -13,7 +13,6 @@ jobs:
     name: Build on windows-latest (MSYS2/MINGW64)
     runs-on: windows-latest
     env:
-      # evita conversões automáticas de caminhos pelo MSYS2
       MSYS2_ARG_CONV_EXCL: '*'
 
     steps:
@@ -25,7 +24,6 @@ jobs:
         with:
           msystem: MINGW64
           update: true
-          # instala toolchain, openssl, zlib, tcl (tclsh), autotools e utilitários
           install: |
             mingw-w64-x86_64-toolchain
             mingw-w64-x86_64-openssl
@@ -56,7 +54,6 @@ jobs:
           set -euo pipefail
 
           echo "🔹 Building SQLCipher tag: $TAG"
-          # prepare clean clone of upstream SQLCipher into ./sqlcipher
           if [ -d sqlcipher ]; then
             echo "sqlcipher dir already exists — removing for a clean clone"
             rm -rf sqlcipher
@@ -65,7 +62,6 @@ jobs:
           git clone https://github.com/sqlcipher/sqlcipher.git sqlcipher
           cd sqlcipher
 
-          # try to checkout the requested tag (works for tags & branches)
           git fetch --tags --quiet || true
           if git rev-parse --verify --quiet "$TAG"; then
             git checkout "$TAG"
@@ -78,11 +74,9 @@ jobs:
           echo "=> Listing top-level files:"
           ls -la
 
-          # install dir inside repo workspace so Actions can upload it later
           install_dir="$(pwd)/build/install"
           mkdir -p "$install_dir"
 
-          # CFLAGS/LDFLAGS: point to mingw64 includes/libs (msys2 installed packages)
           export CFLAGS="-O2 -DSQLITE_HAS_CODEC -DSQLCIPHER_CRYPTO_OPENSSL -DSQLITE_THREADSAFE=1 -DSQLITE_TEMP_STORE=2 -I/mingw64/include"
           export LDFLAGS="-L/mingw64/lib -lssl -lcrypto -lz"
 
@@ -90,14 +84,13 @@ jobs:
           echo "LDFLAGS: $LDFLAGS"
 
           echo "🔹 Running configure..."
-          # configure to install into $install_dir
           ./configure --prefix="$install_dir" CFLAGS="$CFLAGS" LDFLAGS="$LDFLAGS" --enable-shared --enable-static --disable-tcl \
-            || { echo "⚠️ configure failed; dumping config.log (if present)"; [ -f config.log ] && sed -n '1,200p' config.log || true; exit 1; }
+            || { echo "⚠️ configure failed; dumping config.log"; [ -f config.log ] && sed -n '1,200p' config.log || true; exit 1; }
 
           echo "🔹 Running make..."
           make -j"$(nproc)" || { echo "❌ make failed"; exit 1; }
 
-          echo "🔹 Running make install (to $install_dir)..."
+          echo "🔹 Running make install..."
           make install || { echo "❌ make install failed"; exit 1; }
 
           echo "🔹 Build/install finished. Artifacts:"
@@ -109,7 +102,7 @@ jobs:
           ls -la "$install_dir/include" || true
 
       - name: Upload build artifacts
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: sqlcipher-windows-artifacts
           path: |
