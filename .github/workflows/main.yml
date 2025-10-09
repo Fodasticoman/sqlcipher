@@ -1,4 +1,4 @@
-name: Build SQLCipher (Windows)
+name: Build SQLCipher Windows
 
 on:
   workflow_dispatch:
@@ -7,25 +7,30 @@ jobs:
   build-sqlcipher:
     runs-on: windows-latest
 
-    env:
-      TAG: v4.10.0
-      MSYSTEM: MINGW64
-      MSYS2_ARG_CONV_EXCL: "*"
-
     steps:
-      - name: 🔹 Instalar MSYS2 e dependências
+      - name: 🔹 Verificar repositório
+        uses: actions/checkout@v4
+
+      - name: 🧰 Instalar MSYS2
         uses: msys2/setup-msys2@v2
         with:
           update: true
           install: >-
-            git
-            make
+            base-devel
             mingw-w64-x86_64-gcc
             mingw-w64-x86_64-openssl
             mingw-w64-x86_64-zlib
+            mingw-w64-x86_64-tcl
+            git
+            make
+          msystem: MINGW64
 
-      - name: 🔹 Clonar e compilar SQLCipher
+      - name: ⚙️ Compilar SQLCipher
         shell: msys2 {0}
+        env:
+          TAG: v4.10.0
+          MSYSTEM: MINGW64
+          MSYS2_ARG_CONV_EXCL: "*"
         run: |
           set -euo pipefail
 
@@ -42,15 +47,13 @@ jobs:
           install_dir="$(pwd)/build/install"
           mkdir -p "$install_dir"
 
-          # ✅ Flags completas (com init/shutdown corretos)
-          export CFLAGS="-O2 \
-            -DSQLITE_HAS_CODEC \
-            -DSQLCIPHER_CRYPTO_OPENSSL \
-            -DSQLITE_THREADSAFE=1 \
-            -DSQLITE_TEMP_STORE=2 \
-            -DSQLITE_EXTRA_INIT=sqlcipher_extra_init \
-            -DSQLITE_EXTRA_SHUTDOWN=sqlcipher_extra_shutdown \
-            -I/mingw64/include"
+          echo "🔹 Configurando flags..."
+          export CFLAGS=-O2
+          export CFLAGS="$CFLAGS -DSQLITE_HAS_CODEC -DSQLCIPHER_CRYPTO_OPENSSL"
+          export CFLAGS="$CFLAGS -DSQLITE_THREADSAFE=1 -DSQLITE_TEMP_STORE=2"
+          export CFLAGS="$CFLAGS -DSQLITE_EXTRA_INIT=sqlcipher_extra_init"
+          export CFLAGS="$CFLAGS -DSQLITE_EXTRA_SHUTDOWN=sqlcipher_extra_shutdown"
+          export CFLAGS="$CFLAGS -I/mingw64/include"
 
           export LDFLAGS="-L/mingw64/lib -lssl -lcrypto -lz"
 
@@ -59,13 +62,13 @@ jobs:
 
           echo "🔹 Executando ./configure..."
           ./configure \
-            --prefix="$install_dir" \
+            --prefix=$install_dir \
             --enable-shared \
             --enable-static \
             --disable-tcl \
             CFLAGS="$CFLAGS" \
             LDFLAGS="$LDFLAGS" \
-            || { echo "⚠️ configure falhou"; exit 1; }
+            || { echo "⚠️ configure falhou"; cat config.log || true; exit 1; }
 
           echo "🔹 Compilando com make..."
           make -j"$(nproc)" || { echo "❌ make falhou"; exit 1; }
@@ -76,8 +79,8 @@ jobs:
           echo "✅ Build completo!"
           echo "📦 Artefatos instalados em: $install_dir"
 
-      - name: 📤 Upload de artefatos (bin, lib, include)
+      - name: 📦 Enviar artefatos
         uses: actions/upload-artifact@v4
         with:
-          name: sqlcipher-windows-build
-          path: sqlcipher/build/install/
+          name: sqlcipher-windows
+          path: sqlcipher/build/install
