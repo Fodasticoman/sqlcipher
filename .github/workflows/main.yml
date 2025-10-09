@@ -1,4 +1,4 @@
-name: Build SQLCipher Windows
+name: Build SQLCipher (Static)
 
 on:
   workflow_dispatch:
@@ -8,79 +8,47 @@ jobs:
     runs-on: windows-latest
 
     steps:
-      - name: 🔹 Verificar repositório
-        uses: actions/checkout@v4
+      - name: 🧹 Limpar workspace
+        run: |
+          Remove-Item * -Recurse -Force -ErrorAction SilentlyContinue
 
-      - name: 🧰 Instalar MSYS2
+      - name: 🧩 Instalar MSYS2 e dependências
         uses: msys2/setup-msys2@v2
         with:
           update: true
           install: >-
-            base-devel
-            mingw-w64-x86_64-gcc
-            mingw-w64-x86_64-openssl
-            mingw-w64-x86_64-zlib
-            mingw-w64-x86_64-tcl
             git
+            mingw-w64-x86_64-gcc
             make
+            mingw-w64-x86_64-openssl
+            zlib
           msystem: MINGW64
 
-      - name: ⚙️ Compilar SQLCipher
+      - name: 🔹 Clonar e compilar SQLCipher (build estático)
         shell: msys2 {0}
         env:
           TAG: v4.10.0
-          MSYSTEM: MINGW64
-          MSYS2_ARG_CONV_EXCL: "*"
         run: |
           set -euo pipefail
-
           echo "🔹 Clonando SQLCipher tag: $TAG"
-          rm -rf sqlcipher || true
-          git clone https://github.com/sqlcipher/sqlcipher.git sqlcipher
+
+          git clone https://github.com/sqlcipher/sqlcipher.git
           cd sqlcipher
-          git fetch --tags --quiet || true
-          git checkout "$TAG" || git checkout "tags/$TAG" || true
+          git checkout "$TAG"
 
-          echo "✅ Repositório pronto (tag $TAG)"
-          git rev-parse --short HEAD
+          echo "🔹 Configurando build estático..."
+          export CFLAGS="-O2 -DSQLITE_HAS_CODEC -DSQLCIPHER_CRYPTO_OPENSSL -DSQLITE_THREADSAFE=1 -DSQLITE_TEMP_STORE=2 -I/mingw64/include"
+          export LDFLAGS="-static -L/mingw64/lib -lssl -lcrypto -lz -lws2_32 -lgdi32 -lcrypt32"
 
-          install_dir="$(pwd)/build/install"
-          mkdir -p "$install_dir"
+          ./configure --enable-shared --disable-tcl || { echo '⚠️ configure falhou'; exit 1; }
+          make -j"$(nproc)" || { echo '❌ make falhou'; exit 1; }
 
-          echo "🔹 Configurando flags..."
-          export CFLAGS=-O2
-          export CFLAGS="$CFLAGS -DSQLITE_HAS_CODEC -DSQLCIPHER_CRYPTO_OPENSSL"
-          export CFLAGS="$CFLAGS -DSQLITE_THREADSAFE=1 -DSQLITE_TEMP_STORE=2"
-          export CFLAGS="$CFLAGS -DSQLITE_EXTRA_INIT=sqlcipher_extra_init"
-          export CFLAGS="$CFLAGS -DSQLITE_EXTRA_SHUTDOWN=sqlcipher_extra_shutdown"
-          export CFLAGS="$CFLAGS -I/mingw64/include"
+          echo "🔹 Build finalizando..."
+          mkdir -p ../build-output
+          cp sqlite3 ../build-output/sqlcipher.exe
 
-          export LDFLAGS="-L/mingw64/lib -lssl -lcrypto -lz"
-
-          echo "CFLAGS: $CFLAGS"
-          echo "LDFLAGS: $LDFLAGS"
-
-          echo "🔹 Executando ./configure..."
-          ./configure \
-            --prefix=$install_dir \
-            --enable-shared \
-            --enable-static \
-            --disable-tcl \
-            CFLAGS="$CFLAGS" \
-            LDFLAGS="$LDFLAGS" \
-            || { echo "⚠️ configure falhou"; cat config.log || true; exit 1; }
-
-          echo "🔹 Compilando com make..."
-          make -j"$(nproc)" || { echo "❌ make falhou"; exit 1; }
-
-          echo "🔹 Instalando..."
-          make install || { echo "❌ make install falhou"; exit 1; }
-
-          echo "✅ Build completo!"
-          echo "📦 Artefatos instalados em: $install_dir"
-
-      - name: 📦 Enviar artefatos
+      - name: 📦 Publicar binário
         uses: actions/upload-artifact@v4
         with:
-          name: sqlcipher-windows
-          path: sqlcipher/build/install
+          name: sqlcipher-static
+          path: build-output/sqlcipher.exe
