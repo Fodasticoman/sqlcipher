@@ -15,47 +15,48 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      # 2️⃣ Instalar Build Tools + OpenSSL
-      - name: Instalar dependências (Visual C++ + OpenSSL)
+      # 2️⃣ Instalar dependências
+      - name: Instalar Visual Studio Build Tools + OpenSSL
         run: |
           choco install visualstudio2022buildtools --package-parameters "--add Microsoft.VisualStudio.Component.VC.Tools.x86.x64 --quiet --norestart" -y
           choco install openssl.light -y
         shell: powershell
 
-      # 3️⃣ Configurar ambiente MSVC
-      - name: Configurar ambiente do compilador MSVC
-        run: |
-          echo "Inicializando ambiente de compilação MSVC..."
-          if (Test-Path "C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\VC\Auxiliary\Build\vcvars64.bat") {
-            echo "✅ vcvars64 encontrado."
-          } else {
-            echo "❌ vcvars64.bat não encontrado!"; exit 1
-          }
-
-      # 4️⃣ Clonar SQLCipher
+      # 3️⃣ Clonar SQLCipher
       - name: Clonar SQLCipher
         run: |
           git clone --depth 1 https://github.com/sqlcipher/sqlcipher.git
           cd sqlcipher
           git log -1 --oneline
 
-      # 5️⃣ Compilar SQLCipher com suporte a OpenSSL
+      # 4️⃣ Compilar com MSVC e OpenSSL
       - name: Compilar SQLCipher
         shell: cmd
         run: |
+          echo 🔹 Iniciando ambiente de compilação...
           call "C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\VC\Auxiliary\Build\vcvars64.bat"
+
           cd sqlcipher
           echo Compilando SQLCipher com suporte a OpenSSL...
 
           set OPENSSL_PATH=C:\Program Files\OpenSSL
 
+          rem Compilação direta dos arquivos (estão na raiz)
           cl /O2 /DSQLITE_HAS_CODEC /DSQLCIPHER_CRYPTO_OPENSSL /DSQLITE_TEMP_STORE=2 ^
-             /I. /I"src" /I"%OPENSSL_PATH%\include" src\shell.c src\sqlite3.c ^
+             /I. /I"%OPENSSL_PATH%\include" shell.c sqlite3.c ^
              /link /LIBPATH:"%OPENSSL_PATH%\lib" libcrypto.lib libssl.lib ^
              /OUT:sqlcipher.exe
 
-      # 6️⃣ Publicar artefato
-      - name: Upload do binário gerado
+          if exist sqlcipher.exe (
+            echo ✅ Compilação concluída com sucesso!
+          ) else (
+            echo ❌ Erro: sqlcipher.exe não foi gerado!
+            dir
+            exit /b 1
+          )
+
+      # 5️⃣ Upload do binário final
+      - name: Upload do artefato
         uses: actions/upload-artifact@v4
         with:
           name: sqlcipher-windows
