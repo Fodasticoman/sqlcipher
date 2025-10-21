@@ -13,13 +13,13 @@ name: Build SQLCipher Windows
 
 on:
   push:
-    branches: [ main ]  # Executa ao enviar para a branch principal
-  workflow_dispatch:      # Permite execução manual pelo GitHub
+    branches: [ main ]
+  workflow_dispatch:
 
 jobs:
   build:
     name: 🔧 Compilar SQLCipher (Windows)
-    runs-on: windows-latest   # Usa Windows Server com MSVC pré-instalado
+    runs-on: windows-latest
 
     steps:
       # -----------------------------
@@ -35,12 +35,12 @@ jobs:
         uses: microsoft/setup-msbuild@v2
 
       # -----------------------------
-      # 3️⃣ Instalar dependências (OpenSSL + zlib)
+      # 3️⃣ Instalar OpenSSL
       # -----------------------------
-      - name: Instalar OpenSSL e zlib
+      - name: Instalar OpenSSL
         run: |
           choco install openssl.light -y
-          choco install zlib -y
+          echo "✅ OpenSSL instalado em C:\Program Files\OpenSSL"
 
       # -----------------------------
       # 4️⃣ Clonar o repositório SQLCipher
@@ -60,13 +60,13 @@ jobs:
           cd sqlcipher
           echo Compilando SQLCipher com suporte a OpenSSL...
 
-          rem Caminhos padrão do OpenSSL (instalado via Chocolatey)
-          set OPENSSL_PATH="C:\Program Files\OpenSSL-Win64"
+          rem Caminho padrão do OpenSSL (instalado via Chocolatey)
+          set OPENSSL_PATH=C:\Program Files\OpenSSL
 
           rem Compilação com criptografia e threads habilitados
           cl /O2 /DSQLITE_HAS_CODEC /DSQLCIPHER_CRYPTO_OPENSSL /DSQLITE_TEMP_STORE=2 ^
-             /I. /I"src" /I%OPENSSL_PATH%\include src\shell.c src\sqlite3.c ^
-             /link /LIBPATH:%OPENSSL_PATH%\lib libcrypto.lib libssl.lib zlib.lib ^
+             /I. /I"src" /I"%OPENSSL_PATH%\include" src\shell.c src\sqlite3.c ^
+             /link /LIBPATH:"%OPENSSL_PATH%\lib" libcrypto.lib libssl.lib ^
              /OUT:sqlcipher.exe
 
       # -----------------------------
@@ -84,7 +84,3 @@ jobs:
         with:
           name: sqlcipher-windows
           path: sqlcipher/sqlcipher.exe
-
-      # -----------------------------
-      # ✅ Fim do workflow
-      # -----------------------------
