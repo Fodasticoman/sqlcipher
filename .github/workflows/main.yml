@@ -41,9 +41,9 @@ jobs:
 
           set OPENSSL_PATH=C:\Program Files\OpenSSL
 
-          rem Compilação direta dos arquivos (estão na raiz)
+          rem Compilação correta (arquivos dentro de src\)
           cl /O2 /DSQLITE_HAS_CODEC /DSQLCIPHER_CRYPTO_OPENSSL /DSQLITE_TEMP_STORE=2 ^
-             /I. /I"%OPENSSL_PATH%\include" shell.c sqlite3.c ^
+             /I. /I"src" /I"%OPENSSL_PATH%\include" src\shell.c src\sqlite3.c ^
              /link /LIBPATH:"%OPENSSL_PATH%\lib" libcrypto.lib libssl.lib ^
              /OUT:sqlcipher.exe
 
