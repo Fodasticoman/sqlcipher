@@ -8,16 +8,19 @@ jobs:
     runs-on: windows-latest
 
     steps:
-      - name: 🔹 Checkout repository
+      - name: 🧩 Checkout repositório
         uses: actions/checkout@v4
 
-      - name: 🧰 Instalar MSYS2
+      - name: 🧰 Instalar dependências MSYS2
         uses: msys2/setup-msys2@v2
         with:
           update: true
           install: >-
             git
             make
+            automake
+            autoconf
+            libtool
             mingw-w64-x86_64-gcc
             mingw-w64-x86_64-openssl
             mingw-w64-x86_64-zlib
@@ -34,24 +37,37 @@ jobs:
           cd sqlcipher
           git checkout "$TAG"
 
-          echo "🔹 Configurando build estático..."
-          export CFLAGS=-O2\ -DSQLITE_HAS_CODEC\ -DSQLCIPHER_CRYPTO_OPENSSL\ -DSQLITE_THREADSAFE=1\ -DSQLITE_TEMP_STORE=2\ -I/mingw64/include
-          export LDFLAGS=-static\ -L/mingw64/lib\ -lssl\ -lcrypto\ -lz\ -lws2_32\ -lgdi32\ -lcrypt32
+          echo "🔹 Aplicando correções de compatibilidade..."
+          # Remove dependência tcl/jimsh (causa erro no Windows)
+          sed -i 's/USE_TCL = 1/USE_TCL = 0/' Makefile.in || true
+          sed -i 's/--enable-tempstore/ /g' configure.ac || true
+
+          echo "🔹 Regenerando arquivos de configuração..."
+          autoreconf -fi
+
+          echo "🔹 Definindo flags de compilação..."
+          export CFLAGS="-O2 -DSQLITE_HAS_CODEC -DSQLCIPHER_CRYPTO_OPENSSL -DSQLITE_THREADSAFE=1 -DSQLITE_TEMP_STORE=2 -D_WIN32_WINNT=0x0601 -D__USE_MINGW_ANSI_STDIO=1 -I/mingw64/include"
+          export LDFLAGS="-static -L/mingw64/lib -lssl -lcrypto -lz -lws2_32 -lgdi32 -lcrypt32"
 
           echo "CFLAGS: $CFLAGS"
           echo "LDFLAGS: $LDFLAGS"
 
+          echo "🔹 Executando ./configure..."
           ./configure \
-            --enable-shared \
             --disable-tcl \
+            --disable-editline \
+            --enable-shared \
+            --enable-tempstore=yes \
+            --disable-amalgamation \
             CFLAGS="$CFLAGS" \
             LDFLAGS="$LDFLAGS" \
             || { echo '⚠️ configure falhou'; cat config.log | head -n 50 || true; exit 1; }
 
           echo "🔹 Compilando..."
+          make clean || true
           make -j"$(nproc)" || { echo '❌ make falhou'; exit 1; }
 
-          echo "🔹 Copiando build final..."
+          echo "🔹 Copiando binário final..."
           mkdir -p ../build-output
           cp sqlite3 ../build-output/sqlcipher.exe
 
