@@ -1,14 +1,4 @@
-# =========================================================
-# 🧩 GitHub Actions — Compilação do SQLCipher (Windows)
-# =========================================================
-# Este workflow:
-# 1. Configura o Visual Studio Build Tools (MSVC).
-# 2. Instala OpenSSL via Chocolatey.
-# 3. Clona e compila o SQLCipher com suporte a criptografia.
-# 4. Gera o binário final sqlcipher.exe.
-# =========================================================
-
-name: Build SQLCipher Windows
+name: Build SQLCipher (Windows)
 
 on:
   push:
@@ -17,40 +7,43 @@ on:
 
 jobs:
   build:
-    name: 🔧 Compilar SQLCipher (Windows)
+    name: 🔧 Compilar SQLCipher com MSVC + OpenSSL
     runs-on: windows-latest
 
     steps:
-      # -----------------------------
       # 1️⃣ Checkout
-      # -----------------------------
-      - name: Checkout do repositório
+      - name: Checkout
         uses: actions/checkout@v4
 
-      # -----------------------------
-      # 2️⃣ Instalar OpenSSL
-      # -----------------------------
-      - name: Instalar OpenSSL
+      # 2️⃣ Instalar Build Tools + OpenSSL
+      - name: Instalar dependências (Visual C++ + OpenSSL)
         run: |
+          choco install visualstudio2022buildtools --package-parameters "--add Microsoft.VisualStudio.Component.VC.Tools.x86.x64 --quiet --norestart" -y
           choco install openssl.light -y
-          echo "✅ OpenSSL instalado em C:\Program Files\OpenSSL"
+        shell: powershell
 
-      # -----------------------------
-      # 3️⃣ Clonar SQLCipher
-      # -----------------------------
+      # 3️⃣ Configurar ambiente MSVC
+      - name: Configurar ambiente do compilador MSVC
+        run: |
+          echo "Inicializando ambiente de compilação MSVC..."
+          if (Test-Path "C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\VC\Auxiliary\Build\vcvars64.bat") {
+            echo "✅ vcvars64 encontrado."
+          } else {
+            echo "❌ vcvars64.bat não encontrado!"; exit 1
+          }
+
+      # 4️⃣ Clonar SQLCipher
       - name: Clonar SQLCipher
         run: |
           git clone --depth 1 https://github.com/sqlcipher/sqlcipher.git
           cd sqlcipher
           git log -1 --oneline
 
-      # -----------------------------
-      # 4️⃣ Compilar com MSVC
-      # -----------------------------
-      - name: Compilar SQLCipher com MSVC
+      # 5️⃣ Compilar SQLCipher com suporte a OpenSSL
+      - name: Compilar SQLCipher
         shell: cmd
         run: |
-          call "%ProgramFiles(x86)%\Microsoft Visual Studio\2022\BuildTools\VC\Auxiliary\Build\vcvars64.bat"
+          call "C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\VC\Auxiliary\Build\vcvars64.bat"
           cd sqlcipher
           echo Compilando SQLCipher com suporte a OpenSSL...
 
@@ -61,16 +54,8 @@ jobs:
              /link /LIBPATH:"%OPENSSL_PATH%\lib" libcrypto.lib libssl.lib ^
              /OUT:sqlcipher.exe
 
-      # -----------------------------
-      # 5️⃣ Exibir resultado
-      # -----------------------------
-      - name: Listar binário final
-        run: dir sqlcipher
-
-      # -----------------------------
       # 6️⃣ Publicar artefato
-      # -----------------------------
-      - name: Upload do binário SQLCipher
+      - name: Upload do binário gerado
         uses: actions/upload-artifact@v4
         with:
           name: sqlcipher-windows
