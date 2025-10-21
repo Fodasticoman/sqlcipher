@@ -1,99 +1,90 @@
-name: Build SQLCipher (Windows, MSYS2/MingW64)
+# =========================================================
+# 🧩 GitHub Actions — Compilação do SQLCipher (Windows)
+# =========================================================
+# Este workflow:
+# 1. É executado manualmente ou quando há push no branch main.
+# 2. Clona o repositório oficial do SQLCipher.
+# 3. Compila usando o Microsoft Visual C++ (MSVC) com suporte a OpenSSL.
+# 4. Gera o binário final `sqlcipher.exe`.
+# 5. Faz upload automático como artefato.
+# =========================================================
+
+name: Build SQLCipher Windows
 
 on:
-  workflow_dispatch:
-    inputs:
-      tag:
-        description: 'SQLCipher tag (ex: v4.10.0)'
-        required: true
-        default: 'v4.10.0'
+  push:
+    branches: [ main ]  # Executa ao enviar para a branch principal
+  workflow_dispatch:      # Permite execução manual pelo GitHub
 
 jobs:
-  build-windows:
-    runs-on: windows-latest
-    env:
-      TAG: ${{ github.event.inputs.tag }}
+  build:
+    name: 🔧 Compilar SQLCipher (Windows)
+    runs-on: windows-latest   # Usa Windows Server com MSVC pré-instalado
+
     steps:
-      - name: Checkout repo
+      # -----------------------------
+      # 1️⃣ Baixar o código do repositório
+      # -----------------------------
+      - name: Checkout do projeto
         uses: actions/checkout@v4
 
-      - name: Setup MSYS2 (install required packages)
-        uses: msys2/setup-msys2@v2
-        with:
-          update: true
-          install: >-
-            git
-            make
-            mingw-w64-x86_64-gcc
-            mingw-w64-x86_64-openssl
-            mingw-w64-x86_64-zlib
-            mingw-w64-x86_64-pkg-config
+      # -----------------------------
+      # 2️⃣ Configurar compilador MSVC
+      # -----------------------------
+      - name: Configurar ambiente MSVC
+        uses: microsoft/setup-msbuild@v2
 
-      - name: Build SQLCipher (MSYS2 shell)
-        shell: msys2 {0}
-        env:
-          MSYSTEM: MINGW64
+      # -----------------------------
+      # 3️⃣ Instalar dependências (OpenSSL + zlib)
+      # -----------------------------
+      - name: Instalar OpenSSL e zlib
         run: |
-          set -euo pipefail
+          choco install openssl.light -y
+          choco install zlib -y
 
-          echo "🔹 Tag: $TAG"
-          # Clean old checkout (safety)
-          rm -rf sqlcipher || true
-
-          echo "🔹 Clonando SQLCipher..."
-          git clone --depth 1 --branch "$TAG" https://github.com/sqlcipher/sqlcipher.git sqlcipher
+      # -----------------------------
+      # 4️⃣ Clonar o repositório SQLCipher
+      # -----------------------------
+      - name: Clonar SQLCipher
+        run: |
+          git clone --depth 1 https://github.com/sqlcipher/sqlcipher.git
           cd sqlcipher
+          git log -1 --oneline
 
-          echo "=> Current commit:"
-          git rev-parse --short HEAD || true
-          echo "=> Listing top-level files:"
-          ls -la
+      # -----------------------------
+      # 5️⃣ Compilar SQLCipher com MSVC
+      # -----------------------------
+      - name: Compilar SQLCipher (MSVC)
+        shell: cmd
+        run: |
+          cd sqlcipher
+          echo Compilando SQLCipher com suporte a OpenSSL...
 
-          echo "🔹 Preparando flags de compilação..."
-          export CFLAGS="-O2 -DSQLITE_HAS_CODEC -DSQLCIPHER_CRYPTO_OPENSSL -DSQLITE_THREADSAFE=1 -DSQLITE_TEMP_STORE=2 -DSQLITE_EXTRA_INIT=sqlcipher_extra_init -DSQLITE_EXTRA_SHUTDOWN=sqlcipher_extra_shutdown -DHAVE_STDINT_H -I/mingw64/include"
-          export LDFLAGS="-L/mingw64/lib -lssl -lcrypto -lz"
+          rem Caminhos padrão do OpenSSL (instalado via Chocolatey)
+          set OPENSSL_PATH="C:\Program Files\OpenSSL-Win64"
 
-          echo "CFLAGS: $CFLAGS"
-          echo "LDFLAGS: $LDFLAGS"
+          rem Compilação com criptografia e threads habilitados
+          cl /O2 /DSQLITE_HAS_CODEC /DSQLCIPHER_CRYPTO_OPENSSL /DSQLITE_TEMP_STORE=2 ^
+             /I. /I"src" /I%OPENSSL_PATH%\include src\shell.c src\sqlite3.c ^
+             /link /LIBPATH:%OPENSSL_PATH%\lib libcrypto.lib libssl.lib zlib.lib ^
+             /OUT:sqlcipher.exe
 
-          echo "🔹 Rodando ./configure (gera Makefile)..."
-          # Execute configure with environment CFLAGS/LDFLAGS set above.
-          if ! ./configure --prefix="$(pwd)/build/install" --enable-shared --enable-static --disable-tcl ; then
-            echo "⚠️ configure falhou. Mostrando head de config.log para diagnóstico:"
-            [ -f config.log ] && sed -n '1,200p' config.log || true
-            exit 1
-          fi
+      # -----------------------------
+      # 6️⃣ Verificar se o binário foi gerado
+      # -----------------------------
+      - name: Listar arquivos de saída
+        run: |
+          dir sqlcipher
 
-          echo "🔹 Running make..."
-          make -j"$(nproc)" || { echo "❌ make falhou"; exit 1; }
-
-          echo "🔹 Running make install..."
-          make install || { echo "❌ make install falhou"; exit 1; }
-
-          echo "🔹 Artefatos (install):"
-          ls -la build/install || true
-
-          # Copy a CLI binary to build-output for upload.
-          mkdir -p ../build-output
-          # The CLI may be named sqlite3 or sqlcipher depending on build; try both.
-          if [ -f "./sqlite3.exe" ]; then
-            cp ./sqlite3.exe ../build-output/sqlcipher.exe
-          elif [ -f "./sqlcipher.exe" ]; then
-            cp ./sqlcipher.exe ../build-output/sqlcipher.exe
-          elif [ -f "build/install/bin/sqlite3.exe" ]; then
-            cp build/install/bin/sqlite3.exe ../build-output/sqlcipher.exe
-          elif [ -f "build/install/bin/sqlcipher.exe" ]; then
-            cp build/install/bin/sqlcipher.exe ../build-output/sqlcipher.exe
-          else
-            echo "⚠️ Nenhum binário CLI padrão encontrado — listando diretórios para depuração:"
-            ls -la || true
-            exit 1
-          fi
-
-          echo "✅ Build finalizado. Saída em ../build-output/sqlcipher.exe"
-
-      - name: Upload binary artifact
+      # -----------------------------
+      # 7️⃣ Publicar artefato (binário final)
+      # -----------------------------
+      - name: Upload do binário SQLCipher
         uses: actions/upload-artifact@v4
         with:
           name: sqlcipher-windows
-          path: build-output/sqlcipher.exe
+          path: sqlcipher/sqlcipher.exe
+
+      # -----------------------------
+      # ✅ Fim do workflow
+      # -----------------------------
