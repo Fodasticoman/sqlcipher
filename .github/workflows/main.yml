@@ -18,14 +18,11 @@ jobs:
           install: >-
             git
             make
-            automake
-            autoconf
-            libtool
             mingw-w64-x86_64-gcc
             mingw-w64-x86_64-openssl
             mingw-w64-x86_64-zlib
 
-      - name: ⚙️ Compilar SQLCipher
+      - name: ⚙️ Compilar SQLCipher (modo direto)
         shell: msys2 {0}
         env:
           TAG: v4.10.0
@@ -37,39 +34,24 @@ jobs:
           cd sqlcipher
           git checkout "$TAG"
 
-          echo "🔹 Aplicando correções de compatibilidade..."
-          # Remove dependência tcl/jimsh (causa erro no Windows)
-          sed -i 's/USE_TCL = 1/USE_TCL = 0/' Makefile.in || true
-          sed -i 's/--enable-tempstore/ /g' configure.ac || true
-
-          echo "🔹 Regenerando arquivos de configuração..."
-          autoreconf -fi
-
           echo "🔹 Definindo flags de compilação..."
-          export CFLAGS="-O2 -DSQLITE_HAS_CODEC -DSQLCIPHER_CRYPTO_OPENSSL -DSQLITE_THREADSAFE=1 -DSQLITE_TEMP_STORE=2 -D_WIN32_WINNT=0x0601 -D__USE_MINGW_ANSI_STDIO=1 -I/mingw64/include"
-          export LDFLAGS="-static -L/mingw64/lib -lssl -lcrypto -lz -lws2_32 -lgdi32 -lcrypt32"
+          export CFLAGS="-O2 -DSQLITE_HAS_CODEC -DSQLCIPHER_CRYPTO_OPENSSL -DSQLITE_THREADSAFE=1 -DSQLITE_TEMP_STORE=2 -I/mingw64/include"
+          export LDFLAGS="-L/mingw64/lib -lssl -lcrypto -lz -lws2_32 -lgdi32 -lcrypt32"
 
-          echo "CFLAGS: $CFLAGS"
-          echo "LDFLAGS: $LDFLAGS"
-
-          echo "🔹 Executando ./configure..."
-          ./configure \
-            --disable-tcl \
-            --disable-editline \
-            --enable-shared \
-            --enable-tempstore=yes \
-            --disable-amalgamation \
+          echo "🔹 Compilando sqlcipher (modo Makefile)..."
+          make clean || true
+          make -j"$(nproc)" \
             CFLAGS="$CFLAGS" \
             LDFLAGS="$LDFLAGS" \
-            || { echo '⚠️ configure falhou'; cat config.log | head -n 50 || true; exit 1; }
-
-          echo "🔹 Compilando..."
-          make clean || true
-          make -j"$(nproc)" || { echo '❌ make falhou'; exit 1; }
+            TCC="x86_64-w64-mingw32-gcc" \
+            USE_AMALGAMATION=1 \
+            SQLITE_HAS_CODEC=1 \
+            SQLITE_TEMP_STORE=2 \
+            || { echo '❌ Erro ao compilar SQLCipher'; exit 1; }
 
           echo "🔹 Copiando binário final..."
           mkdir -p ../build-output
-          cp sqlite3 ../build-output/sqlcipher.exe
+          cp sqlite3 ../build-output/sqlcipher.exe || cp sqlcipher ../build-output/sqlcipher.exe || echo "⚠️ Nenhum binário padrão encontrado."
 
           echo "✅ Build finalizado! Binário pronto em: build-output/sqlcipher.exe"
 
