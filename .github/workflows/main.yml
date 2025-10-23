@@ -15,8 +15,8 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      # 2️⃣ Instalar dependências
-      - name: Instalar Visual Studio Build Tools + OpenSSL
+      # 2️⃣ Instalar Visual Studio Build Tools + OpenSSL
+      - name: Instalar dependências
         run: |
           choco install visualstudio2022buildtools --package-parameters "--add Microsoft.VisualStudio.Component.VC.Tools.x86.x64 --quiet --norestart" -y
           choco install openssl.light -y
@@ -26,8 +26,7 @@ jobs:
       - name: Clonar SQLCipher
         run: |
           git clone --depth 1 https://github.com/sqlcipher/sqlcipher.git
-          cd sqlcipher
-          git log -1 --oneline
+          git -C sqlcipher log -1 --oneline
 
       # 4️⃣ Compilar com MSVC e OpenSSL
       - name: Compilar SQLCipher
@@ -39,7 +38,7 @@ jobs:
           cd sqlcipher
           echo Compilando SQLCipher com suporte a OpenSSL...
 
-          set OPENSSL_PATH=C:\Program Files\OpenSSL
+          set "OPENSSL_PATH=C:\Program Files\OpenSSL"
 
           rem Compilação correta (arquivos dentro de src\)
           cl /O2 /DSQLITE_HAS_CODEC /DSQLCIPHER_CRYPTO_OPENSSL /DSQLITE_TEMP_STORE=2 ^
@@ -51,6 +50,9 @@ jobs:
             echo ✅ Compilação concluída com sucesso!
           ) else (
             echo ❌ Erro: sqlcipher.exe não foi gerado!
+            echo Diretório atual:
+            cd
+            echo Conteúdo:
             dir
             exit /b 1
           )
