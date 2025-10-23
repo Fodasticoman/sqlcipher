@@ -11,24 +11,29 @@ jobs:
     runs-on: windows-latest
 
     steps:
-      # 1️⃣ Checkout
+      # 1️⃣ Checkout do repositório principal (o seu)
       - name: Checkout
         uses: actions/checkout@v4
 
-      # 2️⃣ Instalar Visual Studio Build Tools + OpenSSL
+      # 2️⃣ Instalar ferramentas necessárias
       - name: Instalar dependências
         run: |
           choco install visualstudio2022buildtools --package-parameters "--add Microsoft.VisualStudio.Component.VC.Tools.x86.x64 --quiet --norestart" -y
           choco install openssl.light -y
         shell: powershell
 
-      # 3️⃣ Clonar SQLCipher
-      - name: Clonar SQLCipher
+      # 3️⃣ Baixar SQLCipher diretamente na pasta atual (sem subpasta extra)
+      - name: Baixar SQLCipher
         run: |
-          git clone --depth 1 https://github.com/sqlcipher/sqlcipher.git
-          git -C sqlcipher log -1 --oneline
+          $tag = "v4.10.0"
+          echo "🔹 Baixando SQLCipher versão $tag..."
+          Invoke-WebRequest -Uri "https://github.com/sqlcipher/sqlcipher/archive/refs/tags/$tag.zip" -OutFile "sqlcipher.zip"
+          Expand-Archive sqlcipher.zip -DestinationPath .
+          Move-Item "sqlcipher-$tag" "sqlcipher"
+          echo "✅ SQLCipher extraído com sucesso!"
+        shell: powershell
 
-      # 4️⃣ Compilar com MSVC e OpenSSL
+      # 4️⃣ Compilar SQLCipher com MSVC + OpenSSL
       - name: Compilar SQLCipher
         shell: cmd
         run: |
@@ -57,8 +62,8 @@ jobs:
             exit /b 1
           )
 
-      # 5️⃣ Upload do binário final
-      - name: Upload do artefato
+      # 5️⃣ Upload do artefato final
+      - name: Upload do binário
         uses: actions/upload-artifact@v4
         with:
           name: sqlcipher-windows
