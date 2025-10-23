@@ -11,35 +11,42 @@ jobs:
     - name: Checkout
       uses: actions/checkout@v4
 
-    # 1️⃣ Instala o Visual Studio Build Tools corretamente
-    - name: Instalar MSVC Build Tools
+    # 1️⃣ Instala o Visual Studio Build Tools
+    - name: Instalar Visual Studio Build Tools
       run: |
-        echo 🔹 Instalando Visual Studio Build Tools...
+        Write-Host "Instalando Visual Studio Build Tools..."
         choco install visualstudio2022buildtools --params '--add Microsoft.VisualStudio.Workload.VCTools --quiet --norestart' -y
       shell: powershell
 
-    # 2️⃣ Instala o OpenSSL (necessário para SQLCipher)
+    # 2️⃣ Instala o OpenSSL
     - name: Instalar OpenSSL
       run: |
-        echo 🔹 Instalando OpenSSL...
+        Write-Host "Instalando OpenSSL..."
         choco install openssl --version=3.2.0 -y
       shell: powershell
 
-    # 3️⃣ Baixa e extrai o SQLCipher
+    # 3️⃣ Baixa o SQLCipher
     - name: Baixar SQLCipher
       run: |
         $tag = "v4.10.0"
-        echo "🔹 Baixando SQLCipher versão $tag..."
+        Write-Host "Baixando SQLCipher versão $tag..."
         Invoke-WebRequest -Uri "https://github.com/sqlcipher/sqlcipher/archive/refs/tags/$tag.zip" -OutFile "sqlcipher.zip"
         Expand-Archive sqlcipher.zip -DestinationPath .
-        Move-Item "sqlcipher-sqlcipher-$tag" "sqlcipher"
-        echo "✅ SQLCipher extraído com sucesso."
+        if (Test-Path "sqlcipher-sqlcipher-$tag") {
+          Move-Item "sqlcipher-sqlcipher-$tag" "sqlcipher"
+        } elseif (Test-Path "sqlcipher-$tag") {
+          Move-Item "sqlcipher-$tag" "sqlcipher"
+        } else {
+          Write-Error "Não foi possível encontrar o diretório extraído do SQLCipher."
+          exit 1
+        }
+        Write-Host "SQLCipher extraído com sucesso."
       shell: powershell
 
-    # 4️⃣ Compila o SQLCipher
-    - name: Compilar SQLCipher (MSVC + OpenSSL)
+    # 4️⃣ Compila o SQLCipher com MSVC + OpenSSL
+    - name: Compilar SQLCipher
       run: |
-        echo 🔹 Iniciando ambiente de compilação...
+        echo Iniciando ambiente de compilação...
         call "C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\VC\Auxiliary\Build\vcvars64.bat"
         
         cd sqlcipher
@@ -54,9 +61,9 @@ jobs:
            /OUT:sqlcipher.exe
         
         if exist sqlcipher.exe (
-          echo ✅ Compilação concluída com sucesso!
+          echo Compilação concluída com sucesso!
         ) else (
-          echo ❌ Erro: sqlcipher.exe não foi gerado!
+          echo Erro: sqlcipher.exe não foi gerado!
           echo Diretório atual:
           cd
           echo Conteúdo:
@@ -65,22 +72,15 @@ jobs:
         )
       shell: cmd
 
-    # 5️⃣ Verifica o binário final
+    # 5️⃣ Mostra o binário final
     - name: Verificar binário gerado
       run: |
-        echo 🔹 Verificando saída...
+        echo Verificando saída...
         cd sqlcipher
         dir sqlcipher.exe
       shell: cmd
 
-    # 6️⃣ (Opcional) Testa execução básica
-    - name: Testar execução básica do SQLCipher
-      run: |
-        cd sqlcipher
-        echo .help | sqlcipher.exe
-      shell: cmd
-
-    # 7️⃣ (Opcional) Publica o executável como artefato
+    # 6️⃣ Publica o executável
     - name: Upload do SQLCipher compilado
       uses: actions/upload-artifact@v4
       with:
