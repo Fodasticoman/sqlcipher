@@ -7,11 +7,11 @@ on:
 
 jobs:
   build:
-    name: 🔧 Compilar SQLCipher com MSVC + OpenSSL
+    name: Compilar SQLCipher com MSVC + OpenSSL
     runs-on: windows-latest
 
     steps:
-      # 1️⃣ Checkout do repositório principal (o seu)
+      # 1️⃣ Checkout do repositório
       - name: Checkout
         uses: actions/checkout@v4
 
@@ -22,22 +22,22 @@ jobs:
           choco install openssl.light -y
         shell: powershell
 
-      # 3️⃣ Baixar SQLCipher diretamente na pasta atual (sem subpasta extra)
+      # 3️⃣ Baixar SQLCipher diretamente (sem subpasta duplicada)
       - name: Baixar SQLCipher
         run: |
           $tag = "v4.10.0"
-          echo "🔹 Baixando SQLCipher versão $tag..."
+          echo 'Baixando SQLCipher versão' $tag '...'
           Invoke-WebRequest -Uri "https://github.com/sqlcipher/sqlcipher/archive/refs/tags/$tag.zip" -OutFile "sqlcipher.zip"
           Expand-Archive sqlcipher.zip -DestinationPath .
           Move-Item "sqlcipher-$tag" "sqlcipher"
-          echo "✅ SQLCipher extraído com sucesso!"
+          echo 'SQLCipher extraído com sucesso.'
         shell: powershell
 
       # 4️⃣ Compilar SQLCipher com MSVC + OpenSSL
       - name: Compilar SQLCipher
         shell: cmd
         run: |
-          echo 🔹 Iniciando ambiente de compilação...
+          echo Iniciando ambiente de compilação...
           call "C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\VC\Auxiliary\Build\vcvars64.bat"
 
           cd sqlcipher
@@ -52,9 +52,9 @@ jobs:
              /OUT:sqlcipher.exe
 
           if exist sqlcipher.exe (
-            echo ✅ Compilação concluída com sucesso!
+            echo Compilação concluída com sucesso!
           ) else (
-            echo ❌ Erro: sqlcipher.exe não foi gerado!
+            echo ERRO: sqlcipher.exe não foi gerado!
             echo Diretório atual:
             cd
             echo Conteúdo:
