@@ -1,7 +1,7 @@
 name: Build SQLCipher with OpenSSL (Windows)
 
 on:
-  workflow_dispatch:   # 🔹 Adiciona botão "Run workflow" manual
+  workflow_dispatch:   # permite rodar manualmente
   push:
     branches: [ "main" ]
   pull_request:
@@ -48,28 +48,31 @@ jobs:
           Write-Host "SQLCipher extraído com sucesso."
         shell: powershell
 
-      - name: Compilar SQLCipher
+      - name: Compilar SQLCipher (com ambiente VS configurado)
+        shell: powershell
         run: |
           Write-Host "Configurando ambiente do compilador..."
-          call "C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\VC\Auxiliary\Build\vcvars64.bat"
 
-          cd sqlcipher
+          $vcvarsPath = "C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\VC\Auxiliary\Build\vcvars64.bat"
+          if (-Not (Test-Path $vcvarsPath)) {
+            Write-Error "vcvars64.bat não encontrado em: $vcvarsPath"
+            exit 1
+          }
+
+          $opensslPath = "C:\Program Files\OpenSSL-Win64"
+          if (-Not (Test-Path $opensslPath)) {
+            Write-Error "OpenSSL não encontrado em: $opensslPath"
+            exit 1
+          }
+
           Write-Host "Compilando SQLCipher com suporte a OpenSSL..."
+          $sqlcipherDir = "$(Get-Location)\sqlcipher"
 
-          set OPENSSL_PATH="C:\Program Files\OpenSSL-Win64"
-
-          if not exist %OPENSSL_PATH% (
-            echo ERRO: OpenSSL não encontrado em %OPENSSL_PATH%
-            exit /b 1
-          )
-
-          cl /O2 /DSQLITE_HAS_CODEC /DSQLCIPHER_CRYPTO_OPENSSL /DSQLITE_TEMP_STORE=2 ^
-             /I. /I"src" /I"%OPENSSL_PATH%\include" src\shell.c src\sqlite3.c ^
-             /link /LIBPATH:"%OPENSSL_PATH%\lib" libcrypto.lib libssl.lib ^
-             /OUT:sqlcipher.exe
-        shell: cmd
+          # Invocar o vcvars64.bat e compilar dentro do mesmo processo
+          cmd /c "`"$vcvarsPath`" && cd /d `"$sqlcipherDir`" && cl /O2 /DSQLITE_HAS_CODEC /DSQLCIPHER_CRYPTO_OPENSSL /DSQLITE_TEMP_STORE=2 /I. /I`"src`" /I`"$opensslPath\include`" src\shell.c src\sqlite3.c /link /LIBPATH:`"$opensslPath\lib`" libcrypto.lib libssl.lib /OUT:sqlcipher.exe"
 
       - name: Verificar build
+        shell: powershell
         run: |
           if (Test-Path "sqlcipher\sqlcipher.exe") {
             Write-Host "✅ Build concluído com sucesso!"
@@ -77,7 +80,6 @@ jobs:
             Write-Error "❌ Falha na compilação: sqlcipher.exe não encontrado."
             exit 1
           }
-        shell: powershell
 
       - name: Publicar artefato
         uses: actions/upload-artifact@v4
