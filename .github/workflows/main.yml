@@ -1,88 +1,85 @@
-name: Build SQLCipher (Windows + OpenSSL)
+name: Build SQLCipher with OpenSSL (Windows)
 
 on:
-  workflow_dispatch:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
 
 jobs:
   build:
     runs-on: windows-latest
 
     steps:
-    - name: Checkout
-      uses: actions/checkout@v4
+      - name: Checkout repositório
+        uses: actions/checkout@v4
 
-    # 1️⃣ Instala o Visual Studio Build Tools
-    - name: Instalar Visual Studio Build Tools
-      run: |
-        Write-Host "Instalando Visual Studio Build Tools..."
-        choco install visualstudio2022buildtools --params '--add Microsoft.VisualStudio.Workload.VCTools --quiet --norestart' -y
-      shell: powershell
+      - name: Configurar Chocolatey
+        run: |
+          Set-ExecutionPolicy Bypass -Scope Process -Force
+          [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072
+          if (-not (Get-Command choco -ErrorAction SilentlyContinue)) {
+            Write-Host "Instalando Chocolatey..."
+            Invoke-Expression ((New-Object System.Net.WebClient).DownloadString('https://chocolatey.org/install.ps1'))
+          } else {
+            Write-Host "Chocolatey já instalado."
+          }
+        shell: powershell
 
-    # 2️⃣ Instala o OpenSSL
-    - name: Instalar OpenSSL
-      run: |
-        Write-Host "Instalando OpenSSL..."
-        choco install openssl --version=3.2.0 -y
-      shell: powershell
+      - name: Instalar Visual Studio Build Tools
+        run: |
+          Write-Host "Instalando Visual Studio Build Tools..."
+          choco install visualstudio2022buildtools --params '--add Microsoft.VisualStudio.Workload.VCTools --quiet --norestart' -y
+        shell: powershell
 
-    # 3️⃣ Baixa o SQLCipher
-    - name: Baixar SQLCipher
-      run: |
-        $tag = "v4.10.0"
-        Write-Host "Baixando SQLCipher versão $tag..."
-        Invoke-WebRequest -Uri "https://github.com/sqlcipher/sqlcipher/archive/refs/tags/$tag.zip" -OutFile "sqlcipher.zip"
-        Expand-Archive sqlcipher.zip -DestinationPath .
-        if (Test-Path "sqlcipher-sqlcipher-$tag") {
-          Move-Item "sqlcipher-sqlcipher-$tag" "sqlcipher"
-        } elseif (Test-Path "sqlcipher-$tag") {
-          Move-Item "sqlcipher-$tag" "sqlcipher"
-        } else {
-          Write-Error "Não foi possível encontrar o diretório extraído do SQLCipher."
-          exit 1
-        }
-        Write-Host "SQLCipher extraído com sucesso."
-      shell: powershell
+      - name: Instalar OpenSSL (via winget)
+        run: |
+          Write-Host "Instalando OpenSSL via winget..."
+          winget install -e --id ShiningLight.OpenSSL.Light --accept-source-agreements --accept-package-agreements
+        shell: powershell
 
-    # 4️⃣ Compila o SQLCipher com MSVC + OpenSSL
-    - name: Compilar SQLCipher
-      run: |
-        echo Iniciando ambiente de compilação...
-        call "C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\VC\Auxiliary\Build\vcvars64.bat"
-        
-        cd sqlcipher
-        echo Compilando SQLCipher com suporte a OpenSSL...
-        
-        set "OPENSSL_PATH=C:\Program Files\OpenSSL"
-        
-        rem Compila os arquivos principais
-        cl /O2 /DSQLITE_HAS_CODEC /DSQLCIPHER_CRYPTO_OPENSSL /DSQLITE_TEMP_STORE=2 ^
-           /I. /I"src" /I"%OPENSSL_PATH%\include" src\shell.c src\sqlite3.c ^
-           /link /LIBPATH:"%OPENSSL_PATH%\lib" libcrypto.lib libssl.lib ^
-           /OUT:sqlcipher.exe
-        
-        if exist sqlcipher.exe (
-          echo Compilação concluída com sucesso!
-        ) else (
-          echo Erro: sqlcipher.exe não foi gerado!
-          echo Diretório atual:
-          cd
-          echo Conteúdo:
-          dir
-          exit /b 1
-        )
-      shell: cmd
+      - name: Baixar SQLCipher
+        run: |
+          Write-Host "Baixando SQLCipher v4.10.0..."
+          Invoke-WebRequest -Uri "https://github.com/sqlcipher/sqlcipher/archive/refs/tags/v4.10.0.zip" -OutFile "sqlcipher.zip"
+          Expand-Archive sqlcipher.zip -DestinationPath .
+          Rename-Item "sqlcipher-4.10.0" "sqlcipher"
+          Write-Host "SQLCipher extraído com sucesso."
+        shell: powershell
 
-    # 5️⃣ Mostra o binário final
-    - name: Verificar binário gerado
-      run: |
-        echo Verificando saída...
-        cd sqlcipher
-        dir sqlcipher.exe
-      shell: cmd
+      - name: Compilar SQLCipher
+        run: |
+          Write-Host "Configurando ambiente do compilador..."
+          call "C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\VC\Auxiliary\Build\vcvars64.bat"
 
-    # 6️⃣ Publica o executável
-    - name: Upload do SQLCipher compilado
-      uses: actions/upload-artifact@v4
-      with:
-        name: sqlcipher-windows
-        path: sqlcipher\sqlcipher.exe
+          cd sqlcipher
+          Write-Host "Compilando SQLCipher com suporte a OpenSSL..."
+
+          set OPENSSL_PATH="C:\Program Files\OpenSSL-Win64"
+
+          if not exist %OPENSSL_PATH% (
+            echo ERRO: OpenSSL não encontrado em %OPENSSL_PATH%
+            exit /b 1
+          )
+
+          cl /O2 /DSQLITE_HAS_CODEC /DSQLCIPHER_CRYPTO_OPENSSL /DSQLITE_TEMP_STORE=2 ^
+             /I. /I"src" /I"%OPENSSL_PATH%\include" src\shell.c src\sqlite3.c ^
+             /link /LIBPATH:"%OPENSSL_PATH%\lib" libcrypto.lib libssl.lib ^
+             /OUT:sqlcipher.exe
+        shell: cmd
+
+      - name: Verificar build
+        run: |
+          if (Test-Path "sqlcipher\sqlcipher.exe") {
+            Write-Host "✅ Build concluído com sucesso!"
+          } else {
+            Write-Error "❌ Falha na compilação: sqlcipher.exe não encontrado."
+            exit 1
+          }
+        shell: powershell
+
+      - name: Publicar artefato
+        uses: actions/upload-artifact@v4
+        with:
+          name: sqlcipher-windows
+          path: sqlcipher/sqlcipher.exe
