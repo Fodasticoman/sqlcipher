@@ -15,7 +15,7 @@ jobs:
       - name: Checkout repositório
         uses: actions/checkout@v4
 
-      - name: Configurar Chocolatey
+      - name: Garantir Chocolatey
         run: |
           Set-ExecutionPolicy Bypass -Scope Process -Force
           [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072
@@ -25,12 +25,6 @@ jobs:
           } else {
             Write-Host "Chocolatey já instalado."
           }
-        shell: powershell
-
-      - name: Instalar Visual Studio Build Tools
-        run: |
-          Write-Host "Instalando Visual Studio Build Tools..."
-          choco install visualstudio2022buildtools --params '--add Microsoft.VisualStudio.Workload.VCTools --quiet --norestart' -y
         shell: powershell
 
       - name: Instalar OpenSSL (via winget)
@@ -48,27 +42,37 @@ jobs:
           Write-Host "SQLCipher extraído com sucesso."
         shell: powershell
 
-      - name: Compilar SQLCipher (com ambiente VS configurado)
+      - name: Compilar SQLCipher com OpenSSL
         shell: powershell
         run: |
           Write-Host "Configurando ambiente do compilador..."
 
-          $vcvarsPath = "C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\VC\Auxiliary\Build\vcvars64.bat"
-          if (-Not (Test-Path $vcvarsPath)) {
-            Write-Error "vcvars64.bat não encontrado em: $vcvarsPath"
+          # Tentar encontrar automaticamente o vcvars64.bat
+          $vcvarsCandidates = @(
+            "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvars64.bat",
+            "C:\Program Files\Microsoft Visual Studio\2022\Professional\VC\Auxiliary\Build\vcvars64.bat",
+            "C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\VC\Auxiliary\Build\vcvars64.bat"
+          )
+
+          $vcvarsPath = $vcvarsCandidates | Where-Object { Test-Path $_ } | Select-Object -First 1
+
+          if (-not $vcvarsPath) {
+            Write-Error "❌ Não foi possível localizar o arquivo vcvars64.bat em nenhuma das localizações padrão."
             exit 1
           }
 
+          Write-Host "✅ Encontrado vcvars64.bat em: $vcvarsPath"
+
           $opensslPath = "C:\Program Files\OpenSSL-Win64"
           if (-Not (Test-Path $opensslPath)) {
-            Write-Error "OpenSSL não encontrado em: $opensslPath"
+            Write-Error "❌ OpenSSL não encontrado em: $opensslPath"
             exit 1
           }
 
           Write-Host "Compilando SQLCipher com suporte a OpenSSL..."
           $sqlcipherDir = "$(Get-Location)\sqlcipher"
 
-          # Invocar o vcvars64.bat e compilar dentro do mesmo processo
+          # Invocar o vcvars64.bat e compilar dentro do mesmo ambiente
           cmd /c "`"$vcvarsPath`" && cd /d `"$sqlcipherDir`" && cl /O2 /DSQLITE_HAS_CODEC /DSQLCIPHER_CRYPTO_OPENSSL /DSQLITE_TEMP_STORE=2 /I. /I`"src`" /I`"$opensslPath\include`" src\shell.c src\sqlite3.c /link /LIBPATH:`"$opensslPath\lib`" libcrypto.lib libssl.lib /OUT:sqlcipher.exe"
 
       - name: Verificar build
