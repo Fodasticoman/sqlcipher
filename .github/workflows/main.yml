@@ -1,6 +1,7 @@
 name: Build SQLCipher with OpenSSL (Windows)
 
 on:
+  workflow_dispatch:   # 🔹 Adiciona botão "Run workflow" manual
   push:
     branches: [ "main" ]
   pull_request:
