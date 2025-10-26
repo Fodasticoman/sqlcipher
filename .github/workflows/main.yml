@@ -51,9 +51,10 @@ jobs:
             exit /b 1
           )
 
+          rem === Compila a biblioteca dinâmica (DLL) ===
           echo Compilando biblioteca dinamica (sqlcipher.dll)...
           cl /O2 /LD /DSQLITE_HAS_CODEC /DSQLCIPHER_CRYPTO_OPENSSL /DSQLITE_TEMP_STORE=2 ^
-             /I. /I"src" /I"%OPENSSL_PATH%\include" src\sqlite3.c ^
+             /I. /I"%OPENSSL_PATH%\include" sqlite3.c ^
              /link /DLL /LIBPATH:"%OPENSSL_PATH%\lib" libcrypto.lib libssl.lib ^
              /OUT:sqlcipher.dll
 
@@ -64,9 +65,10 @@ jobs:
             echo sqlcipher.dll compilada com sucesso.
           )
 
+          rem === Compila o executavel (CLI) ===
           echo Compilando executavel de linha de comando (sqlcipher.exe)...
           cl /O2 /DSQLITE_HAS_CODEC /DSQLCIPHER_CRYPTO_OPENSSL /DSQLITE_TEMP_STORE=2 ^
-             /I. /I"src" /I"%OPENSSL_PATH%\include" src\shell.c src\sqlite3.c ^
+             /I. /I"%OPENSSL_PATH%\include" shell.c sqlite3.c ^
              /link /LIBPATH:"%OPENSSL_PATH%\lib" libcrypto.lib libssl.lib ^
              /OUT:sqlcipher.exe
 
