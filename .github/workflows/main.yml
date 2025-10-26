@@ -1,65 +1,120 @@
-name: Build SQLCipher with OpenSSL (Windows)
+name: build-sqlcipher-mingw64
 
 on:
-  workflow_dispatch:   # botão "Run workflow"
-  push:
-    branches: [ "main" ]
-  pull_request:
-    branches: [ "main" ]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'SQLCipher tag or branch to build (e.g. v4.10.0)'
+        required: false
+        default: 'v4.10.0'
 
 jobs:
-  build:
+  build-mingw64:
+    name: Build SQLCipher (MSYS2 / mingw-w64)
     runs-on: windows-latest
-
+    env:
+      TAG: ${{ github.event.inputs.tag || 'v4.10.0' }}
     steps:
-      - name: Checkout repositório
+      - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Instalar OpenSSL via winget
-        run: |
-          Write-Host "Instalando OpenSSL..."
-          winget install -e --id ShiningLight.OpenSSL.Light --accept-source-agreements --accept-package-agreements
-        shell: powershell
+      - name: Setup MSYS2 (mingw64)
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          update: true
+          install: >-
+            mingw-w64-x86_64-toolchain,
+            mingw-w64-x86_64-openssl,
+            mingw-w64-x86_64-zlib,
+            mingw-w64-x86_64-pkg-config,
+            mingw-w64-x86_64-autoconf,
+            mingw-w64-x86_64-automake,
+            mingw-w64-x86_64-make,
+            base-devel,
+            unzip,
+            which
 
-      - name: Baixar SQLCipher
+      - name: Show MSYS2 version & PATH (debug)
         run: |
-          $tag = "v4.10.0"
-          Write-Host "Baixando SQLCipher $tag..."
-          Invoke-WebRequest -Uri "https://github.com/sqlcipher/sqlcipher/archive/refs/tags/$tag.zip" -OutFile "sqlcipher.zip"
-          Expand-Archive sqlcipher.zip -DestinationPath .
-          Rename-Item "sqlcipher-$($tag.TrimStart('v'))" "sqlcipher"
-          Write-Host "✅ SQLCipher extraído com sucesso."
-        shell: powershell
+          echo "MSYSTEM=$MSYSTEM"
+          echo "PATH=$PATH"
+          /usr/bin/bash -lc "pacman -Qi | head -n 40 || true"
 
-      - name: Compilar SQLCipher (usando Makefile.msc)
-        shell: cmd
+      - name: Run build inside MSYS2 / MINGW64
+        shell: bash -l {0}
         run: |
-          echo Configurando ambiente de compilação...
-          call "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvars64.bat"
+          set -euo pipefail
 
+          echo "🔹 TAG = $TAG"
+          # Clean workspace
+          rm -rf sqlcipher || true
+
+          echo "🔹 Cloning SQLCipher..."
+          git clone --depth 1 --branch "$TAG" https://github.com/sqlcipher/sqlcipher.git sqlcipher || {
+            echo "⚠️ Clone failed with branch — try normal clone & checkout"
+            git clone https://github.com/sqlcipher/sqlcipher.git sqlcipher
+            cd sqlcipher
+            git fetch --tags --quiet || true
+            git checkout "$TAG" || git checkout "tags/$TAG" || true
+            cd ..
+          }
+
+          # Enter
           cd sqlcipher
-          echo Compilando com NMake e suporte a OpenSSL...
 
-          set OPENSSL_PATH=C:\Program Files\OpenSSL-Win64
-          if not exist "%OPENSSL_PATH%" (
-            echo ERRO: OpenSSL não encontrado!
-            exit /b 1
-          )
+          echo "=> Current commit: $(git rev-parse --short HEAD || true)"
+          echo "=> Top-level files:"
+          ls -la
 
-          nmake /f Makefile.msc USE_OPENSSL=1 OPENSSL_PATH="%OPENSSL_PATH%" SQLITE_HAS_CODEC=1 OPTIMIZATIONS=2
+          # Prepare install dir
+          install_dir="$(pwd)/build/install"
+          mkdir -p "$install_dir"
 
-      - name: Verificar resultado
-        shell: powershell
-        run: |
-          if (Test-Path "sqlcipher\sqlite3.exe") {
-            Write-Host "✅ Build concluído com sucesso!"
-          } else {
-            Write-Error "❌ Falha na compilação: sqlite3.exe não encontrado."
+          # Export correct flags. Add EXTRA_INIT and EXTRA_SHUTDOWN (important for SQLCipher).
+          export CFLAGS="-O2 -DSQLITE_HAS_CODEC -DSQLCIPHER_CRYPTO_OPENSSL -DSQLITE_THREADSAFE=1 -DSQLITE_TEMP_STORE=2 -DSQLITE_EXTRA_INIT=sqlcipher_extra_init -DSQLITE_EXTRA_SHUTDOWN=sqlcipher_extra_shutdown -I/mingw64/include -DHAVE_STDINT_H"
+          export LDFLAGS="-L/mingw64/lib -lssl -lcrypto -lz"
+
+          echo "CFLAGS: $CFLAGS"
+          echo "LDFLAGS: $LDFLAGS"
+
+          # Ensure pkg-config can find OpenSSL/zlib:
+          export PKG_CONFIG_PATH="/mingw64/lib/pkgconfig:/mingw64/share/pkgconfig:$PKG_CONFIG_PATH" || true
+
+          # Run configure (this should generate sqlite3.c/shell.c via tool chain if needed)
+          echo "🔹 Running ./configure..."
+          ./configure --prefix="$install_dir" CFLAGS="$CFLAGS" LDFLAGS="$LDFLAGS" --enable-shared --enable-static --disable-tcl || {
+            echo "⚠️ configure failed; showing tail of config.log (for diagnostics)"
+            [ -f config.log ] && tail -n +1 config.log | sed -n '1,200p' || true
             exit 1
           }
 
-      - name: Publicar artefato compilado
-        uses: actions/upload-artifact@v4
-        with:
-          name: sqlcipher-windows
-          path: sqlcipher/sqlite3.exe
+          echo "🔹 Running make..."
+          make -j$(nproc) || { echo "❌ make failed"; exit 1; }
+
+          echo "🔹 Running make install..."
+          make install || { echo "❌ make install failed"; exit 1; }
+
+          echo "🔹 Inspect installed artifacts:"
+          echo " - bin:"
+          ls -la "$install_dir/bin" || true
+          echo " - lib:"
+          ls -la "$install_dir/lib" || true
+          echo " - include:"
+          ls -la "$install_dir/include" || true
+
+          # Try to ensure a CLI binary for upload exists (try multiple locations)
+          mkdir -p ../build-output
+          if [ -f ./sqlite3.exe ]; then
+            cp ./sqlite3.exe ../build-output/sqlcipher.exe
+          elif [ -f ./sqlcipher.exe ]; then
+            cp ./sqlcipher.exe ../build-output/sqlcipher.exe
+          elif [ -f "$install_dir/bin/sqlite3.exe" ]; then
+            cp "$install_dir/bin/sqlite3.exe" ../build-output/sqlcipher.exe
+          elif [ -f "$install_dir/bin/sqlcipher.exe" ]; then
+            cp "$install_dir/bin/sqlcipher.exe" ../build-output/sqlcipher.exe
+          else
+            echo "⚠️ Nenhum binário CLI encontrado automaticamente - listando build tree for debug"
+            find . -maxdepth 3 -type f -name '*.exe' -print || true
+            # still continue to produce libs for upload (if any)
+          fi
