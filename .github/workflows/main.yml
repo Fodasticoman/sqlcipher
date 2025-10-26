@@ -15,22 +15,42 @@ jobs:
       - name: Checkout repositório
         uses: actions/checkout@v4
 
-      - name: Instalar OpenSSL via winget
-        run: |
-          Write-Host "Instalando OpenSSL..."
-          winget install -e --id ShiningLight.OpenSSL.Light --accept-source-agreements --accept-package-agreements
-          Write-Host "OpenSSL instalado com sucesso."
+      - name: Instalar dependências (OpenSSL e Tcl)
         shell: powershell
+        run: |
+          Write-Host "🔧 Instalando OpenSSL e Tcl..."
+          winget install -e --id ShiningLight.OpenSSL.Light --accept-source-agreements --accept-package-agreements
+          winget install -e --id ActiveState.ActiveTcl --accept-source-agreements --accept-package-agreements
+          Write-Host "✅ Dependências instaladas com sucesso."
 
       - name: Baixar SQLCipher
+        shell: powershell
         run: |
           $tag = "v4.10.0"
-          Write-Host "Baixando SQLCipher $tag..."
+          Write-Host "📦 Baixando SQLCipher $tag..."
           Invoke-WebRequest -Uri "https://github.com/sqlcipher/sqlcipher/archive/refs/tags/$tag.zip" -OutFile "sqlcipher.zip"
           Expand-Archive sqlcipher.zip -DestinationPath .
           Rename-Item "sqlcipher-$($tag.TrimStart('v'))" "sqlcipher"
-          Write-Host "SQLCipher extraído com sucesso."
-        shell: powershell
+          Write-Host "✅ SQLCipher extraído com sucesso."
+
+      - name: Gerar arquivo sqlite3.c (amalgamado)
+        shell: cmd
+        run: |
+          echo ===========================================
+          echo Gerando amalgamacao sqlite3.c...
+          echo ===========================================
+          cd sqlcipher
+          set PATH=C:\ActiveTcl\bin;%PATH%
+          if not exist tool\mksqlite3c.tcl (
+            echo ERRO: Script de amalgamacao nao encontrado!
+            exit /b 1
+          )
+          tclsh tool\mksqlite3c.tcl
+          if not exist sqlite3.c (
+            echo ERRO: Falha ao gerar sqlite3.c
+            exit /b 1
+          )
+          echo sqlite3.c gerado com sucesso.
 
       - name: Compilar SQLCipher (DLL e EXE)
         shell: cmd
@@ -77,20 +97,6 @@ jobs:
           ) else (
             echo sqlcipher.exe compilado com sucesso.
           )
-
-      - name: Verificar resultados
-        shell: powershell
-        run: |
-          $dll = "sqlcipher\sqlcipher.dll"
-          $exe = "sqlcipher\sqlcipher.exe"
-          if ((Test-Path $dll) -and (Test-Path $exe)) {
-            Write-Host "Build finalizado com sucesso! DLL e EXE disponiveis."
-          } elseif (Test-Path $dll) {
-            Write-Host "Build parcial: apenas DLL disponivel (sqlcipher.dll)."
-          } else {
-            Write-Error "Falha: Nenhum artefato encontrado."
-            exit 1
-          }
 
       - name: Publicar artefatos compilados
         uses: actions/upload-artifact@v4
