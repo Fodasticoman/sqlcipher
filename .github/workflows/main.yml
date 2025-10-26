@@ -1,7 +1,7 @@
 name: Build SQLCipher with OpenSSL (Windows)
 
 on:
-  workflow_dispatch:   # Permite executar manualmente
+  workflow_dispatch:
   push:
     branches: [ "main" ]
   pull_request:
@@ -17,63 +17,63 @@ jobs:
 
       - name: Instalar OpenSSL via winget
         run: |
-          Write-Host "🔧 Instalando OpenSSL..."
+          Write-Host "Instalando OpenSSL..."
           winget install -e --id ShiningLight.OpenSSL.Light --accept-source-agreements --accept-package-agreements
-          Write-Host "✅ OpenSSL instalado com sucesso."
+          Write-Host "OpenSSL instalado com sucesso."
         shell: powershell
 
       - name: Baixar SQLCipher
         run: |
           $tag = "v4.10.0"
-          Write-Host "⬇️  Baixando SQLCipher $tag..."
+          Write-Host "Baixando SQLCipher $tag..."
           Invoke-WebRequest -Uri "https://github.com/sqlcipher/sqlcipher/archive/refs/tags/$tag.zip" -OutFile "sqlcipher.zip"
           Expand-Archive sqlcipher.zip -DestinationPath .
           Rename-Item "sqlcipher-$($tag.TrimStart('v'))" "sqlcipher"
-          Write-Host "✅ SQLCipher extraído com sucesso."
+          Write-Host "SQLCipher extraído com sucesso."
         shell: powershell
 
       - name: Compilar SQLCipher (DLL e EXE)
         shell: cmd
         run: |
           echo ===========================================
-          echo 🔧 Configurando ambiente de compilação...
+          echo Configurando ambiente de compilacao...
           echo ===========================================
           call "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvars64.bat"
 
           cd sqlcipher
           echo ===========================================
-          echo ⚙️  Compilando SQLCipher com suporte a OpenSSL...
+          echo Compilando SQLCipher com suporte a OpenSSL...
           echo ===========================================
 
           set "OPENSSL_PATH=C:\Program Files\OpenSSL-Win64"
           if not exist "%OPENSSL_PATH%" (
-            echo ❌ ERRO: OpenSSL não encontrado em "%OPENSSL_PATH%"
+            echo ERRO: OpenSSL nao encontrado em "%OPENSSL_PATH%"
             exit /b 1
           )
 
-          echo 🔹 Compilando biblioteca dinâmica (sqlcipher.dll)...
+          echo Compilando biblioteca dinamica (sqlcipher.dll)...
           cl /O2 /LD /DSQLITE_HAS_CODEC /DSQLCIPHER_CRYPTO_OPENSSL /DSQLITE_TEMP_STORE=2 ^
              /I. /I"src" /I"%OPENSSL_PATH%\include" src\sqlite3.c ^
              /link /DLL /LIBPATH:"%OPENSSL_PATH%\lib" libcrypto.lib libssl.lib ^
              /OUT:sqlcipher.dll
 
           if not exist "sqlcipher.dll" (
-            echo ❌ Falha ao gerar sqlcipher.dll
+            echo ERRO: Falha ao gerar sqlcipher.dll
             exit /b 1
           ) else (
-            echo ✅ sqlcipher.dll compilada com sucesso.
+            echo sqlcipher.dll compilada com sucesso.
           )
 
-          echo 🔹 Compilando executável de linha de comando (sqlcipher.exe)...
+          echo Compilando executavel de linha de comando (sqlcipher.exe)...
           cl /O2 /DSQLITE_HAS_CODEC /DSQLCIPHER_CRYPTO_OPENSSL /DSQLITE_TEMP_STORE=2 ^
              /I. /I"src" /I"%OPENSSL_PATH%\include" src\shell.c src\sqlite3.c ^
              /link /LIBPATH:"%OPENSSL_PATH%\lib" libcrypto.lib libssl.lib ^
              /OUT:sqlcipher.exe
 
           if not exist "sqlcipher.exe" (
-            echo ⚠️  Aviso: sqlcipher.exe não foi gerado.
+            echo Aviso: sqlcipher.exe nao foi gerado.
           ) else (
-            echo ✅ sqlcipher.exe compilado com sucesso.
+            echo sqlcipher.exe compilado com sucesso.
           )
 
       - name: Verificar resultados
@@ -82,11 +82,11 @@ jobs:
           $dll = "sqlcipher\sqlcipher.dll"
           $exe = "sqlcipher\sqlcipher.exe"
           if ((Test-Path $dll) -and (Test-Path $exe)) {
-            Write-Host "✅ Build finalizado com sucesso! DLL e EXE disponíveis."
+            Write-Host "Build finalizado com sucesso! DLL e EXE disponiveis."
           } elseif (Test-Path $dll) {
-            Write-Host "⚠️ Build parcial: apenas DLL disponível (sqlcipher.dll)."
+            Write-Host "Build parcial: apenas DLL disponivel (sqlcipher.dll)."
           } else {
-            Write-Error "❌ Falha: Nenhum artefato encontrado."
+            Write-Error "Falha: Nenhum artefato encontrado."
             exit 1
           }
 
