@@ -15,14 +15,18 @@ jobs:
       - name: Checkout repositório
         uses: actions/checkout@v4
 
-      - name: Instalar OpenSSL
+      - name: Instalar OpenSSL e Tcl
         shell: powershell
         run: |
           Write-Host "Instalando OpenSSL..."
           winget install -e --id ShiningLight.OpenSSL.Light --accept-source-agreements --accept-package-agreements
-          Write-Host "OpenSSL instalado com sucesso."
 
-      - name: Baixar SQLCipher (com arquivos amalgamados)
+          Write-Host "Baixando e instalando Tcl manualmente..."
+          Invoke-WebRequest -Uri "https://downloads.activestate.com/ActiveTcl/releases/8.6.12.1/ActiveTcl-8.6.12.1.0000-MSWin32-x64.exe" -OutFile "ActiveTcl.exe"
+          Start-Process -FilePath "ActiveTcl.exe" -ArgumentList "/S" -Wait
+          Write-Host "Tcl instalado com sucesso."
+
+      - name: Baixar e preparar SQLCipher
         shell: powershell
         run: |
           $tag = "v4.10.0"
@@ -30,12 +34,31 @@ jobs:
           Invoke-WebRequest -Uri "https://github.com/sqlcipher/sqlcipher/archive/refs/tags/$tag.zip" -OutFile "sqlcipher.zip"
           Expand-Archive sqlcipher.zip -DestinationPath .
           Rename-Item "sqlcipher-$($tag.TrimStart('v'))" "sqlcipher"
-          Write-Host "SQLCipher extraido com sucesso."
+          Write-Host "SQLCipher extraído com sucesso."
 
-          # Baixar amalgamados diretamente (sem usar Tcl)
-          Invoke-WebRequest -Uri "https://raw.githubusercontent.com/sqlcipher/sqlcipher/$tag/sqlite3.c" -OutFile "sqlcipher/sqlite3.c"
-          Invoke-WebRequest -Uri "https://raw.githubusercontent.com/sqlcipher/sqlcipher/$tag/src/shell.c" -OutFile "sqlcipher/shell.c"
-          Write-Host "Arquivos sqlite3.c e shell.c prontos."
+      - name: Gerar sqlite3.c amalgamado
+        shell: cmd
+        run: |
+          echo ===========================================
+          echo Gerando arquivo amalgamado sqlite3.c ...
+          echo ===========================================
+          set TCL_PATH=C:\ActiveTcl
+          if not exist "%TCL_PATH%" (
+            echo ERRO: Tcl nao encontrado em "%TCL_PATH%"
+            dir "C:\"
+            exit /b 1
+          )
+          cd sqlcipher
+          set PATH=%PATH%;%TCL_PATH%\bin
+          echo Executando mksqlite3c.tcl...
+          tclsh tool\mksqlite3c.tcl
+
+          if not exist "sqlite3.c" (
+            echo ERRO: Falha ao gerar sqlite3.c
+            exit /b 1
+          ) else (
+            echo sqlite3.c gerado com sucesso.
+          )
 
       - name: Compilar SQLCipher (DLL e EXE)
         shell: cmd
