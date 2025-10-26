@@ -18,20 +18,20 @@ jobs:
       - name: Instalar dependências (OpenSSL e Tcl)
         shell: powershell
         run: |
-          Write-Host "🔧 Instalando OpenSSL e Tcl..."
+          Write-Host "Instalando OpenSSL e Tcl..."
           winget install -e --id ShiningLight.OpenSSL.Light --accept-source-agreements --accept-package-agreements
           winget install -e --id ActiveState.ActiveTcl --accept-source-agreements --accept-package-agreements
-          Write-Host "✅ Dependências instaladas com sucesso."
+          Write-Host "Dependencias instaladas com sucesso."
 
       - name: Baixar SQLCipher
         shell: powershell
         run: |
           $tag = "v4.10.0"
-          Write-Host "📦 Baixando SQLCipher $tag..."
+          Write-Host "Baixando SQLCipher $tag..."
           Invoke-WebRequest -Uri "https://github.com/sqlcipher/sqlcipher/archive/refs/tags/$tag.zip" -OutFile "sqlcipher.zip"
           Expand-Archive sqlcipher.zip -DestinationPath .
           Rename-Item "sqlcipher-$($tag.TrimStart('v'))" "sqlcipher"
-          Write-Host "✅ SQLCipher extraído com sucesso."
+          Write-Host "SQLCipher extraido com sucesso."
 
       - name: Gerar arquivo sqlite3.c (amalgamado)
         shell: cmd
@@ -71,7 +71,7 @@ jobs:
             exit /b 1
           )
 
-          rem === Compila a biblioteca dinâmica (DLL) ===
+          rem === Compila a biblioteca dinamica (DLL) ===
           echo Compilando biblioteca dinamica (sqlcipher.dll)...
           cl /O2 /LD /DSQLITE_HAS_CODEC /DSQLCIPHER_CRYPTO_OPENSSL /DSQLITE_TEMP_STORE=2 ^
              /I. /I"%OPENSSL_PATH%\include" sqlite3.c ^
