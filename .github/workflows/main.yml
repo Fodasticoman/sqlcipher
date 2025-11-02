@@ -1,4 +1,4 @@
-name: Build SQLCipher with OpenSSL (Windows)
+name: Build SQLCipher (Windows, MSYS2 / MinGW)
 
 on:
   workflow_dispatch:
@@ -8,108 +8,135 @@ on:
     branches: [ "main" ]
 
 jobs:
-  build:
+  build-sqlcipher:
+    name: Build SQLCipher (msys2/mingw64)
     runs-on: windows-latest
+    env:
+      TAG: v4.10.0
+      MSYSTEM: MINGW64
 
     steps:
-      - name: Checkout repositório
+      - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Instalar OpenSSL e Tcl
-        shell: powershell
-        run: |
-          Write-Host "Instalando OpenSSL..."
-          winget install -e --id ShiningLight.OpenSSL.Light --accept-source-agreements --accept-package-agreements
+      - name: Setup MSYS2 (install pacman + update)
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          update: true
+          install: >-
+            mingw-w64-x86_64-toolchain,
+            mingw-w64-x86_64-gcc,
+            mingw-w64-x86_64-make,
+            mingw-w64-x86_64-pkg-config,
+            mingw-w64-x86_64-openssl,
+            mingw-w64-x86_64-zlib,
+            mingw-w64-x86_64-tcl,
+            autoconf,
+            automake,
+            pkg-config,
+            git,
+            tar,
+            gzip
 
-          Write-Host "Baixando e instalando Tcl manualmente..."
-          Invoke-WebRequest -Uri "https://downloads.activestate.com/ActiveTcl/releases/8.6.12.1/ActiveTcl-8.6.12.1.0000-MSWin32-x64.exe" -OutFile "ActiveTcl.exe"
-          Start-Process -FilePath "ActiveTcl.exe" -ArgumentList "/S" -Wait
-          Write-Host "Tcl instalado com sucesso."
-
-      - name: Baixar e preparar SQLCipher
-        shell: powershell
+      - name: Show environment (debug)
+        shell: bash
         run: |
-          $tag = "v4.10.0"
-          Write-Host "Baixando SQLCipher $tag..."
-          Invoke-WebRequest -Uri "https://github.com/sqlcipher/sqlcipher/archive/refs/tags/$tag.zip" -OutFile "sqlcipher.zip"
-          Expand-Archive sqlcipher.zip -DestinationPath .
-          Rename-Item "sqlcipher-$($tag.TrimStart('v'))" "sqlcipher"
-          Write-Host "SQLCipher extraído com sucesso."
+          echo "MSYSTEM=$MSYSTEM"
+          which gcc || true
+          gcc --version || true
+          pacman -Qi mingw-w64-x86_64-openssl || true
 
-      - name: Gerar sqlite3.c amalgamado
-        shell: cmd
+      - name: Clone SQLCipher (shallow)
+        shell: bash
         run: |
-          echo ===========================================
-          echo Gerando arquivo amalgamado sqlite3.c ...
-          echo ===========================================
-          set TCL_PATH=C:\ActiveTcl
-          if not exist "%TCL_PATH%" (
-            echo ERRO: Tcl nao encontrado em "%TCL_PATH%"
-            dir "C:\"
-            exit /b 1
-          )
+          set -euo pipefail
+          rm -rf sqlcipher || true
+          git clone --depth 1 --branch "$TAG" https://github.com/sqlcipher/sqlcipher.git sqlcipher
           cd sqlcipher
-          set PATH=%PATH%;%TCL_PATH%\bin
-          echo Executando mksqlite3c.tcl...
-          tclsh tool\mksqlite3c.tcl
+          echo "cloned: $(git rev-parse --short HEAD)"
 
-          if not exist "sqlite3.c" (
-            echo ERRO: Falha ao gerar sqlite3.c
-            exit /b 1
-          ) else (
-            echo sqlite3.c gerado com sucesso.
-          )
-
-      - name: Compilar SQLCipher (DLL e EXE)
-        shell: cmd
+      - name: Generate amalgamation (sqlite3.c and shell.c) using tcl (msys2 tclsh)
+        shell: bash
         run: |
-          echo ===========================================
-          echo Configurando ambiente de compilacao...
-          echo ===========================================
-          call "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvars64.bat"
-
+          set -euo pipefail
           cd sqlcipher
-          echo ===========================================
-          echo Compilando SQLCipher com suporte a OpenSSL...
-          echo ===========================================
 
-          set "OPENSSL_PATH=C:\Program Files\OpenSSL-Win64"
-          if not exist "%OPENSSL_PATH%" (
-            echo ERRO: OpenSSL nao encontrado em "%OPENSSL_PATH%"
-            exit /b 1
-          )
+          export PATH="/mingw64/bin:$PATH"
 
-          rem === Compila a biblioteca dinamica (DLL) ===
-          echo Compilando biblioteca dinamica (sqlcipher.dll)...
-          cl /O2 /LD /DSQLITE_HAS_CODEC /DSQLCIPHER_CRYPTO_OPENSSL /DSQLITE_TEMP_STORE=2 ^
-             /I. /I"%OPENSSL_PATH%\include" sqlite3.c ^
-             /link /DLL /LIBPATH:"%OPENSSL_PATH%\lib" libcrypto.lib libssl.lib ^
-             /OUT:sqlcipher.dll
+          if [ -f sqlite3.c ] && [ -f shell.c ]; then
+            echo "amalgamation files already present"
+          else
+            echo "Generating sqlite3.c and shell.c with tclsh..."
+            /mingw64/bin/tclsh tool/mksqlite3c.tcl --linemacros=0 > sqlite3.c
+            /mingw64/bin/tclsh tool/mkshellc.tcl > shell.c || true
+            if [ ! -f sqlite3.c ] && [ -f tsrc/sqlite3.c ]; then
+              cp tsrc/sqlite3.c sqlite3.c
+            fi
+            if [ ! -f shell.c ] && [ -f src/shell.c ]; then
+              cp src/shell.c shell.c
+            fi
+          fi
 
-          if not exist "sqlcipher.dll" (
-            echo ERRO: Falha ao gerar sqlcipher.dll
-            exit /b 1
-          ) else (
-            echo sqlcipher.dll compilada com sucesso.
-          )
+          ls -l sqlite3.c shell.c || true
 
-          rem === Compila o executavel (CLI) ===
-          echo Compilando executavel de linha de comando (sqlcipher.exe)...
-          cl /O2 /DSQLITE_HAS_CODEC /DSQLCIPHER_CRYPTO_OPENSSL /DSQLITE_TEMP_STORE=2 ^
-             /I. /I"%OPENSSL_PATH%\include" shell.c sqlite3.c ^
-             /link /LIBPATH:"%OPENSSL_PATH%\lib" libcrypto.lib libssl.lib ^
-             /OUT:sqlcipher.exe
+      - name: Configure & build SQLCipher (mingw64)
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd sqlcipher
 
-          if not exist "sqlcipher.exe" (
-            echo Aviso: sqlcipher.exe nao foi gerado.
-          ) else (
-            echo sqlcipher.exe compilado com sucesso.
-          )
+          export PATH="/mingw64/bin:$PATH"
+          export CFLAGS="-O2 -DSQLITE_HAS_CODEC -DSQLCIPHER_CRYPTO_OPENSSL -DSQLITE_THREADSAFE=1 -DSQLITE_TEMP_STORE=2 -DSQLITE_EXTRA_INIT=sqlcipher_extra_init -DSQLITE_EXTRA_SHUTDOWN=sqlcipher_extra_shutdown -I/mingw64/include"
+          export LDFLAGS="-L/mingw64/lib -lssl -lcrypto -lz"
 
-      - name: Publicar artefatos compilados
+          ./configure --prefix="$(pwd)/build/install" --enable-shared --enable-static --disable-tcl CFLAGS="$CFLAGS" LDFLAGS="$LDFLAGS"
+
+          make -j"$(nproc)"
+          make install
+
+          mkdir -p ../build-output/bin ../build-output/lib ../build-output/include
+          cp -v build/install/bin/* ../build-output/bin/ || true
+          cp -v build/install/lib/* ../build-output/lib/ || true
+          cp -v build/install/include/* ../build-output/include/ || true
+
+          if [ -f sqlite3.exe ]; then cp -v sqlite3.exe ../build-output/bin/sqlcipher.exe || true; fi
+          if [ -f sqlite3.dll ]; then cp -v sqlite3.dll ../build-output/lib/sqlcipher.dll || true; fi
+
+          ls -la ../build-output || true
+          ls -la ../build-output/bin || true
+          ls -la ../build-output/lib || true
+
+      - name: Verify presence of DLL and EXE (fail if missing)
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "Artifacts in build-output:"
+          ls -la build-output || true
+          if [ -f build-output/lib/sqlcipher.dll ]; then
+            echo "✅ sqlcipher.dll found"
+          elif [ -f build-output/lib/libsqlite3.dll ]; then
+            echo "✅ dll found (libsqlite3.dll)"
+          else
+            echo "❌ No DLL found in build-output/lib"
+            ls -la build-output/lib || true
+            exit 1
+          fi
+
+          if [ -f build-output/bin/sqlcipher.exe ] || [ -f build-output/bin/sqlite3.exe ]; then
+            echo "✅ CLI found"
+          else
+            echo "❌ No CLI exe found"
+            ls -la build-output/bin || true
+            exit 1
+          fi
+
+      - name: Upload artifacts (dll, exe, headers)
         uses: actions/upload-artifact@v4
         with:
           name: sqlcipher-windows
           path: |
-            sqlcipher/sqlcipher.dll
-            sqlcipher/sqlcipher.exe
+            build-output/lib/*.dll
+            build-output/bin/*.exe
+            build-output/include/*.h
+            build-output/lib/*.a
