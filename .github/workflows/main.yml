@@ -19,7 +19,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Setup MSYS2 (install pacman + update)
+      - name: Setup MSYS2
         uses: msys2/setup-msys2@v2
         with:
           msystem: MINGW64
@@ -39,15 +39,7 @@ jobs:
             tar
             gzip
 
-      - name: Show environment (debug)
-        shell: bash
-        run: |
-          echo "MSYSTEM=$MSYSTEM"
-          which gcc || true
-          gcc --version || true
-          pacman -Qi mingw-w64-x86_64-openssl || true
-
-      - name: Clone SQLCipher (shallow)
+      - name: Clone SQLCipher
         shell: bash
         run: |
           set -euo pipefail
@@ -56,37 +48,49 @@ jobs:
           cd sqlcipher
           echo "cloned: $(git rev-parse --short HEAD)"
 
-      - name: Generate amalgamation (sqlite3.c and shell.c)
+      - name: Prepare source tree (generate tsrc)
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd sqlcipher
+          export PATH="/mingw64/bin:$PATH"
+          
+          echo "Running autoconf bootstrap..."
+          autoreconf -fi
+          echo "Running configure to prepare tsrc..."
+          ./configure --disable-tcl || true
+          
+          echo "Generating tsrc directory..."
+          make target_source || true
+          
+          ls -R tsrc || true
+          echo "✅ tsrc directory ready"
+
+      - name: Generate amalgamation manually (optional)
         shell: bash
         run: |
           set -euo pipefail
           cd sqlcipher
           export PATH="/mingw64/bin:$PATH"
 
-          if [ -f sqlite3.c ] && [ -f shell.c ]; then
-            echo "amalgamation files already present"
+          if [ -f tsrc/sqlite3.c ]; then
+            cp tsrc/sqlite3.c .
+            cp tsrc/sqlite3.h .
+            cp src/shell.c .
+            echo "✅ Copied sqlite3.c, sqlite3.h, shell.c from tsrc/src"
           else
-            echo "Generating sqlite3.c and shell.c with tclsh..."
-            /mingw64/bin/tclsh tool/mksqlite3c.tcl --linemacros=0 > sqlite3.c
-            /mingw64/bin/tclsh tool/mkshellc.tcl > shell.c || true
-            if [ ! -f sqlite3.c ] && [ -f tsrc/sqlite3.c ]; then
-              cp tsrc/sqlite3.c sqlite3.c
-            fi
-            if [ ! -f shell.c ] && [ -f src/shell.c ]; then
-              cp src/shell.c shell.c
-            fi
+            echo "⚠️ tsrc/sqlite3.c not found — skipping"
           fi
 
-          ls -l sqlite3.c shell.c || true
+          ls -l sqlite3.c sqlite3.h shell.c || true
 
       - name: Configure & build SQLCipher
         shell: bash
         run: |
           set -euo pipefail
           cd sqlcipher
-
           export PATH="/mingw64/bin:$PATH"
-          export CFLAGS="-O2 -DSQLITE_HAS_CODEC -DSQLCIPHER_CRYPTO_OPENSSL -DSQLITE_THREADSAFE=1 -DSQLITE_TEMP_STORE=2 -DSQLITE_EXTRA_INIT=sqlcipher_extra_init -DSQLITE_EXTRA_SHUTDOWN=sqlcipher_extra_shutdown -I/mingw64/include"
+          export CFLAGS="-O2 -DSQLITE_HAS_CODEC -DSQLCIPHER_CRYPTO_OPENSSL -DSQLITE_THREADSAFE=1 -DSQLITE_TEMP_STORE=2 -I/mingw64/include"
           export LDFLAGS="-L/mingw64/lib -lssl -lcrypto -lz"
 
           ./configure --prefix="$(pwd)/build/install" --enable-shared --enable-static --disable-tcl CFLAGS="$CFLAGS" LDFLAGS="$LDFLAGS"
@@ -106,31 +110,16 @@ jobs:
           ls -la ../build-output/bin || true
           ls -la ../build-output/lib || true
 
-      - name: Verify presence of DLL and EXE
+      - name: Verify artifacts
         shell: bash
         run: |
-          set -euo pipefail
           echo "Artifacts in build-output:"
           ls -la build-output || true
-          if [ -f build-output/lib/sqlcipher.dll ]; then
-            echo "✅ sqlcipher.dll found"
-          elif [ -f build-output/lib/libsqlite3.dll ]; then
-            echo "✅ dll found (libsqlite3.dll)"
-          else
-            echo "❌ No DLL found in build-output/lib"
-            ls -la build-output/lib || true
-            exit 1
-          fi
+          [ -f build-output/lib/sqlcipher.dll ] || [ -f build-output/lib/libsqlite3.dll ] || { echo "❌ DLL not found"; exit 1; }
+          [ -f build-output/bin/sqlcipher.exe ] || [ -f build-output/bin/sqlite3.exe ] || { echo "❌ CLI not found"; exit 1; }
+          echo "✅ DLL and EXE generated successfully"
 
-          if [ -f build-output/bin/sqlcipher.exe ] || [ -f build-output/bin/sqlite3.exe ]; then
-            echo "✅ CLI found"
-          else
-            echo "❌ No CLI exe found"
-            ls -la build-output/bin || true
-            exit 1
-          fi
-
-      - name: Upload artifacts
+      - name: Upload build artifacts
         uses: actions/upload-artifact@v4
         with:
           name: sqlcipher-windows
