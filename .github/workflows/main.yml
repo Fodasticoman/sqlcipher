@@ -25,18 +25,18 @@ jobs:
           msystem: MINGW64
           update: true
           install: >-
-            mingw-w64-x86_64-toolchain,
-            mingw-w64-x86_64-gcc,
-            mingw-w64-x86_64-make,
-            mingw-w64-x86_64-pkg-config,
-            mingw-w64-x86_64-openssl,
-            mingw-w64-x86_64-zlib,
-            mingw-w64-x86_64-tcl,
-            autoconf,
-            automake,
-            pkg-config,
-            git,
-            tar,
+            mingw-w64-x86_64-toolchain
+            mingw-w64-x86_64-gcc
+            mingw-w64-x86_64-make
+            mingw-w64-x86_64-pkg-config
+            mingw-w64-x86_64-openssl
+            mingw-w64-x86_64-zlib
+            mingw-w64-x86_64-tcl
+            autoconf
+            automake
+            pkg-config
+            git
+            tar
             gzip
 
       - name: Show environment (debug)
@@ -56,12 +56,11 @@ jobs:
           cd sqlcipher
           echo "cloned: $(git rev-parse --short HEAD)"
 
-      - name: Generate amalgamation (sqlite3.c and shell.c) using tcl (msys2 tclsh)
+      - name: Generate amalgamation (sqlite3.c and shell.c)
         shell: bash
         run: |
           set -euo pipefail
           cd sqlcipher
-
           export PATH="/mingw64/bin:$PATH"
 
           if [ -f sqlite3.c ] && [ -f shell.c ]; then
@@ -80,7 +79,7 @@ jobs:
 
           ls -l sqlite3.c shell.c || true
 
-      - name: Configure & build SQLCipher (mingw64)
+      - name: Configure & build SQLCipher
         shell: bash
         run: |
           set -euo pipefail
@@ -107,7 +106,7 @@ jobs:
           ls -la ../build-output/bin || true
           ls -la ../build-output/lib || true
 
-      - name: Verify presence of DLL and EXE (fail if missing)
+      - name: Verify presence of DLL and EXE
         shell: bash
         run: |
           set -euo pipefail
@@ -131,7 +130,7 @@ jobs:
             exit 1
           fi
 
-      - name: Upload artifacts (dll, exe, headers)
+      - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
           name: sqlcipher-windows
