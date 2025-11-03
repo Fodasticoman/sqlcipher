@@ -8,27 +8,28 @@ jobs:
     runs-on: windows-latest
 
     steps:
-      - name: 🧰 Set up job
-        run: echo "Iniciando build do SQLCipher com OpenSSL para Windows..."
+      - name: 🧰 Iniciar job
+        run: echo "🚀 Iniciando build do SQLCipher com OpenSSL no Windows..."
 
       - name: 📦 Checkout repositório
         uses: actions/checkout@v4
 
-      - name: ⚙️ Instalar dependências (OpenSSL, Tcl, MSYS2)
+      - name: ⚙️ Instalar dependências básicas (OpenSSL, MSYS2)
         shell: pwsh
         run: |
           choco install -y openssl
           choco install -y msys2
-          choco install -y tcl
-          echo "✅ Dependências instaladas com sucesso."
+          echo "✅ Dependências básicas instaladas."
 
-      - name: 🧩 Configurar ambiente MSYS2
+      - name: 🧩 Configurar ambiente MSYS2 e instalar pacotes nativos
         shell: bash
         run: |
-          echo "Configurando MSYS2..."
+          echo "🔧 Atualizando e configurando MSYS2..."
           export PATH="/c/msys64/usr/bin:/c/msys64/mingw64/bin:$PATH"
           pacman -Sy --noconfirm
-          pacman -S --noconfirm make tcl openssl-devel mingw-w64-x86_64-gcc unzip
+          pacman -S --noconfirm make gcc unzip \
+              tcl tcl-devel openssl-devel mingw-w64-x86_64-gcc
+          echo "✅ MSYS2 e dependências instaladas."
 
       - name: 📥 Baixar e extrair SQLCipher
         shell: bash
@@ -42,33 +43,31 @@ jobs:
         shell: bash
         working-directory: sqlcipher
         run: |
-          echo "🔧 Gerando arquivos amalgamados (sqlite3.c e shell.c)..."
+          echo "🧩 Gerando arquivos amalgamados (sqlite3.c e shell.c)..."
           make sqlite3.c
 
-      - name: 🛠️ Compilar SQLCipher com OpenSSL
+      - name: 🛠️ Compilar SQLCipher com suporte a OpenSSL
         shell: bash
         working-directory: sqlcipher
         run: |
-          echo "⚙️ Compilando SQLCipher com suporte a OpenSSL..."
+          echo "⚙️ Compilando SQLCipher..."
           gcc -DSQLITE_HAS_CODEC -DSQLCIPHER_CRYPTO_OPENSSL \
               -I. -I/usr/include -I/usr/include/openssl \
               -O2 -shared -o libsqlcipher.dll sqlite3.c -lcrypto -lpthread -lm
+
           gcc -DSQLITE_HAS_CODEC -DSQLCIPHER_CRYPTO_OPENSSL \
               -I. -I/usr/include -I/usr/include/openssl \
               -O2 shell.c -o sqlcipher.exe libsqlcipher.dll -lcrypto -lpthread -lm
-          echo "✅ Compilação concluída!"
 
-      - name: 📂 Organizar e publicar artefatos
+          echo "✅ Compilação concluída com sucesso."
+
+      - name: 📂 Organizar artefatos
         shell: bash
         run: |
-          echo "📦 Procurando binários gerados..."
+          echo "📦 Organizando binários..."
           mkdir -p build-output
-
-          # Procurar executáveis e DLLs em qualquer subpasta
-          find sqlcipher -type f \( -iname "*.exe" -o -iname "*.dll" \) -exec cp {} build-output/ \; || true
-
-          echo "✅ Artefatos encontrados:"
-          ls -lh build-output || echo "⚠️ Nenhum artefato encontrado!"
+          find sqlcipher -type f \( -iname "*.exe" -o -iname "*.dll" \) -exec cp {} build-output/ \;
+          ls -lh build-output
 
       - name: 📤 Publicar artefatos
         uses: actions/upload-artifact@v4
@@ -76,5 +75,5 @@ jobs:
           name: sqlcipher-windows
           path: build-output/
 
-      - name: ✅ Complete job
-        run: echo "Build SQLCipher (Windows) concluído com sucesso!"
+      - name: ✅ Finalizar job
+        run: echo "🏁 Build finalizado com sucesso. Artefatos publicados!"
