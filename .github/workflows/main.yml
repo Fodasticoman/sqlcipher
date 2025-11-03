@@ -42,23 +42,25 @@ jobs:
           set -euo pipefail
           TAG="v4.5.5"
           echo "📦 Baixando SQLCipher versão $TAG..."
-          
+
           curl -L --retry 5 --retry-delay 3 --fail \
             "https://github.com/sqlcipher/sqlcipher/archive/refs/tags/${TAG}.tar.gz" \
             -o sqlcipher.tar.gz
-          
-          echo "📦 Extraindo..."
-          tar -xzf sqlcipher.tar.gz
-          
-          # Detecta automaticamente o nome da pasta extraída
+
+          echo "📦 Extraindo (modo silencioso)..."
+          tar -xzf sqlcipher.tar.gz --warning=no-timestamp >/dev/null 2>&1 || true
+
+          # Confirma se a pasta foi realmente extraída
           EXTRACTED_DIR=$(tar -tzf sqlcipher.tar.gz | head -1 | cut -f1 -d"/")
+          if [ ! -d "$EXTRACTED_DIR" ]; then
+            echo "❌ Erro: pasta extraída não encontrada!"
+            exit 1
+          fi
+
           echo "📂 Pasta extraída: $EXTRACTED_DIR"
-          
-          # Move de forma segura
           mv "$EXTRACTED_DIR" sqlcipher
           cd sqlcipher
-          
-          echo "✅ SQLCipher versão $TAG extraído e renomeado com sucesso."
+          echo "✅ SQLCipher $TAG pronto para compilação."
 
       - name: Gerar arquivos amalgamados com Tcl
         shell: msys2 {0}
@@ -72,6 +74,7 @@ jobs:
           if [ ! -f shell.c ]; then
             /usr/bin/tclsh tool/mkshellc.tcl > shell.c
           fi
+          echo "✅ Arquivos amalgamados gerados:"
           ls -lh sqlite3.c shell.c
 
       - name: Compilar SQLCipher com OpenSSL
@@ -96,10 +99,9 @@ jobs:
           echo "🧱 Compilando..."
           make -j$(nproc)
 
-          echo "✅ Compilação finalizada. Listando binários:"
+          echo "✅ Compilação concluída. Listando binários..."
           ls -lh .libs/ || true
-          ls -lh *.dll || true
-          ls -lh *.exe || true
+          ls -lh *.dll *.exe || true
 
       - name: Organizar artefatos
         shell: bash
