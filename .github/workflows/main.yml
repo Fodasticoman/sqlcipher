@@ -11,6 +11,14 @@ jobs:
       - name: Checkout repositório
         uses: actions/checkout@v4
 
+      - name: Instalar dependências essenciais
+        run: |
+          Write-Host "🔧 Instalando OpenSSL, Tcl e 7-Zip..."
+          winget install -e --id ShiningLight.OpenSSL.Light --accept-source-agreements --accept-package-agreements
+          winget install -e --id ActiveState.ActiveTcl --accept-source-agreements --accept-package-agreements
+          choco install 7zip -y
+          Write-Host "✅ Dependências instaladas com sucesso."
+
       - name: Configurar ambiente MSYS2
         uses: msys2/setup-msys2@v2
         with:
@@ -26,36 +34,14 @@ jobs:
             mingw-w64-x86_64-toolchain
             mingw-w64-x86_64-openssl
             mingw-w64-x86_64-zlib
-
-      - name: Detectar última versão com amalgamados disponíveis
-        id: detect-version
-        shell: bash
-        run: |
-          set -euo pipefail
-          echo "🔍 Buscando versão mais recente do SQLCipher com arquivos amalgamados..."
-
-          TAGS=("v4.6.0" "v4.5.6" "v4.5.5" "v4.5.4" "v4.5.3" "v4.5.2" "v4.5.1" "v4.5.0")
-
-          for TAG in "${TAGS[@]}"; do
-            BASE_URL="https://raw.githubusercontent.com/sqlcipher/sqlcipher/${TAG}"
-            TEST_URL="$BASE_URL/sqlite3.c"
-            if curl --head --silent --fail "$TEST_URL" >/dev/null; then
-              echo "✅ Versão compatível encontrada: $TAG"
-              echo "version=$TAG" >> $GITHUB_OUTPUT
-              exit 0
-            fi
-          done
-
-          echo "⚠️ Nenhuma versão recente encontrada, usando fallback v4.5.0."
-          echo "version=v4.5.0" >> $GITHUB_OUTPUT
+            tcl
 
       - name: Baixar e extrair SQLCipher
         shell: bash
         run: |
           set -euo pipefail
-          TAG="${{ steps.detect-version.outputs.version }}"
+          TAG="v4.5.5"
           echo "📦 Baixando SQLCipher versão $TAG..."
-
           curl -L --retry 5 --retry-delay 3 --fail \
             "https://github.com/sqlcipher/sqlcipher/archive/refs/tags/${TAG}.tar.gz" \
             -o sqlcipher.tar.gz
@@ -65,35 +51,36 @@ jobs:
           7z x ../sqlcipher.tar.gz -y >/dev/null
           7z x sqlcipher.tar -y >/dev/null
           rm sqlcipher.tar
-
           EXTRACTED_DIR=$(ls -d sqlcipher-* | head -n 1)
           mv "$EXTRACTED_DIR" ../sqlcipher
           cd ..
           echo "✅ SQLCipher $TAG pronto para compilação."
 
-      - name: Baixar amalgamados oficiais
+      - name: Gerar arquivos amalgamados com Tcl
         shell: bash
         run: |
           set -euo pipefail
+          echo "🔧 Gerando sqlite3.c e shell.c via Tcl..."
           cd sqlcipher
-          TAG="${{ steps.detect-version.outputs.version }}"
-          echo "📥 Baixando arquivos amalgamados oficiais da versão $TAG..."
 
-          BASE_URL="https://raw.githubusercontent.com/sqlcipher/sqlcipher/${TAG}"
-          FILES=("sqlite3.c" "sqlite3.h" "src/shell.c")
-          for FILE in "${FILES[@]}"; do
-            URL="$BASE_URL/$FILE"
-            if curl --head --silent --fail "$URL" >/dev/null; then
-              echo "⬇️  Baixando $FILE..."
-              curl -L --fail -o "$(basename $FILE)" "$URL"
-            else
-              echo "⚠️  Arquivo $FILE não encontrado em $URL"
-              exit 1
-            fi
-          done
+          if ! command -v tclsh &>/dev/null; then
+            echo "❌ Tcl não encontrado!"; exit 1;
+          fi
 
-          echo "✅ Arquivos amalgamados prontos:"
-          ls -lh sqlite3.c sqlite3.h shell.c
+          mkdir -p tsrc
+          cp -r src/* tsrc/
+          cp tool/mksqlite3c.tcl .
+          cp tool/mkshellc.tcl .
+
+          echo "🧩 Executando mksqlite3c.tcl..."
+          tclsh mksqlite3c.tcl > sqlite3.c
+
+          echo "🧩 Executando mkshellc.tcl..."
+          tclsh mkshellc.tcl > shell.c
+
+          ls -lh sqlite3.c shell.c
+
+          echo "✅ Arquivos amalgamados gerados com sucesso."
 
       - name: Compilar SQLCipher com OpenSSL
         shell: msys2 {0}
@@ -101,7 +88,7 @@ jobs:
           set -euo pipefail
           cd sqlcipher
 
-          echo "⚙️ Compilando SQLCipher..."
+          echo "⚙️ Compilando libsqlcipher.dll..."
           gcc -O2 -DSQLITE_HAS_CODEC -DSQLCIPHER_CRYPTO_OPENSSL \
             -I. -shared -o libsqlcipher.dll sqlite3.c \
             -lcrypto -lssl -lz
@@ -111,8 +98,8 @@ jobs:
             -I. -o sqlcipher.exe shell.c sqlite3.c \
             -lcrypto -lssl -lz
 
-          echo "✅ Compilação concluída:"
-          ls -lh sqlcipher.exe libsqlcipher.dll || true
+          echo "✅ Compilação concluída com sucesso."
+          ls -lh sqlcipher.exe libsqlcipher.dll
 
       - name: Organizar artefatos
         shell: bash
