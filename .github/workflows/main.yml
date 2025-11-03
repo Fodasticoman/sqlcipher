@@ -21,18 +21,11 @@ jobs:
             autoconf
             automake
             libtool
-            m4
             make
             pkg-config
-            tcl
-            git
             mingw-w64-x86_64-toolchain
-            mingw-w64-x86_64-gcc
-            mingw-w64-x86_64-make
-            mingw-w64-x86_64-pkg-config
             mingw-w64-x86_64-openssl
             mingw-w64-x86_64-zlib
-            mingw-w64-x86_64-tcl
 
       - name: Baixar e extrair SQLCipher
         shell: bash
@@ -45,39 +38,28 @@ jobs:
             "https://github.com/sqlcipher/sqlcipher/archive/refs/tags/${TAG}.tar.gz" \
             -o sqlcipher.tar.gz
 
-          echo "📦 Extraindo com 7-Zip (modo seguro)..."
-          mkdir extract
-          cd extract
+          echo "📦 Extraindo com 7-Zip..."
+          mkdir extract && cd extract
           7z x ../sqlcipher.tar.gz -y >/dev/null
           7z x sqlcipher.tar -y >/dev/null
           rm sqlcipher.tar
 
           EXTRACTED_DIR=$(ls -d sqlcipher-* | head -n 1)
-          if [ ! -d "$EXTRACTED_DIR" ]; then
-            echo "❌ Erro: diretório não encontrado após extração!"
-            ls -l
-            exit 1
-          fi
-
-          echo "📂 Pasta extraída: $EXTRACTED_DIR"
           mv "$EXTRACTED_DIR" ../sqlcipher
           cd ..
           echo "✅ SQLCipher $TAG pronto para compilação."
 
-      - name: Gerar arquivos amalgamados com Tcl
-        shell: msys2 {0}
+      - name: Baixar amalgamados oficiais
+        shell: bash
         run: |
           set -euo pipefail
           cd sqlcipher
-          echo "🔧 Gerando sqlite3.c e shell.c..."
-          if [ ! -f sqlite3.c ]; then
-            /usr/bin/tclsh tool/mksqlite3c.tcl --linemacros=0 > sqlite3.c
-          fi
-          if [ ! -f shell.c ]; then
-            /usr/bin/tclsh tool/mkshellc.tcl > shell.c
-          fi
-          echo "✅ Arquivos amalgamados gerados:"
-          ls -lh sqlite3.c shell.c
+          echo "📥 Baixando arquivos amalgamados oficiais..."
+          curl -L --fail -o sqlite3.c "https://raw.githubusercontent.com/sqlcipher/sqlcipher/v4.5.5/sqlite3.c"
+          curl -L --fail -o sqlite3.h "https://raw.githubusercontent.com/sqlcipher/sqlcipher/v4.5.5/sqlite3.h"
+          curl -L --fail -o shell.c "https://raw.githubusercontent.com/sqlcipher/sqlcipher/v4.5.5/src/shell.c"
+          echo "✅ Arquivos amalgamados prontos:"
+          ls -lh sqlite3.c sqlite3.h shell.c
 
       - name: Compilar SQLCipher com OpenSSL
         shell: msys2 {0}
@@ -85,36 +67,23 @@ jobs:
           set -euo pipefail
           cd sqlcipher
 
-          echo "🔧 Executando autoreconf..."
-          autoreconf -fi
+          echo "⚙️ Configurando compilação..."
+          gcc -O2 -DSQLITE_HAS_CODEC -DSQLCIPHER_CRYPTO_OPENSSL \
+            -I. -o sqlcipher.exe shell.c sqlite3.c \
+            -lcrypto -lssl -lz
 
-          echo "⚙️ Executando ./configure..."
-          ./configure \
-            --enable-tempstore=yes \
-            --enable-fts5 \
-            --enable-json1 \
-            --disable-tcl \
-            --with-crypto-lib=openssl \
-            CFLAGS="-O2 -DSQLITE_HAS_CODEC" \
-            LDFLAGS="-lcrypto -lssl"
-
-          echo "🧱 Compilando..."
-          make -j$(nproc)
-
-          echo "✅ Compilação concluída."
-          ls -lh .libs/ || true
-          ls -lh *.dll *.exe || true
+          echo "✅ Compilação concluída:"
+          ls -lh sqlcipher.exe || true
 
       - name: Organizar artefatos
         shell: bash
         run: |
           mkdir -p build-output
-          cp sqlcipher/.libs/libsqlcipher*.dll build-output/sqlcipher.dll || true
-          cp sqlcipher/sqlite3.exe build-output/sqlcipher.exe || true
-          echo "✅ Artefatos copiados:"
+          cp sqlcipher/sqlcipher.exe build-output/sqlcipher.exe || true
+          echo "✅ Artefato copiado:"
           ls -lh build-output
 
-      - name: Compactar e publicar artefatos
+      - name: Publicar artefatos
         uses: actions/upload-artifact@v4
         with:
           name: sqlcipher-windows
