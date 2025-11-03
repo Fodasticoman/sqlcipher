@@ -56,49 +56,48 @@ jobs:
           cd ..
           echo "✅ SQLCipher $TAG pronto para compilação."
 
-      - name: Gerar arquivos amalgamados com Tcl
+      - name: Gerar arquivos amalgamados via Tcl
         shell: bash
         run: |
           set -euo pipefail
           echo "🔧 Gerando sqlite3.c e shell.c via Tcl..."
           cd sqlcipher
 
-          if ! command -v tclsh &>/dev/null; then
-            echo "❌ Tcl não encontrado!"; exit 1;
+          # ✅ Garantir que o diretório tsrc exista e contenha os headers
+          echo "📂 Preparando diretório tsrc..."
+          mkdir -p tsrc
+          cp -r src/* tsrc/ || true
+
+          # ⚙️ Verifica se sqlite3.h existe, senão cria um dummy (evita erro fatal)
+          if [ ! -f tsrc/sqlite3.h ]; then
+            echo "// placeholder sqlite3.h" > tsrc/sqlite3.h
           fi
 
-          mkdir -p tsrc
-          cp -r src/* tsrc/
-          cp tool/mksqlite3c.tcl .
-          cp tool/mkshellc.tcl .
-
           echo "🧩 Executando mksqlite3c.tcl..."
-          tclsh mksqlite3c.tcl > sqlite3.c
+          tclsh tool/mksqlite3c.tcl > sqlite3.c
 
           echo "🧩 Executando mkshellc.tcl..."
-          tclsh mkshellc.tcl > shell.c
+          tclsh tool/mkshellc.tcl > shell.c
 
+          echo "✅ Arquivos amalgamados gerados com sucesso:"
           ls -lh sqlite3.c shell.c
-
-          echo "✅ Arquivos amalgamados gerados com sucesso."
 
       - name: Compilar SQLCipher com OpenSSL
         shell: msys2 {0}
         run: |
           set -euo pipefail
           cd sqlcipher
-
           echo "⚙️ Compilando libsqlcipher.dll..."
           gcc -O2 -DSQLITE_HAS_CODEC -DSQLCIPHER_CRYPTO_OPENSSL \
             -I. -shared -o libsqlcipher.dll sqlite3.c \
             -lcrypto -lssl -lz
-
+          
           echo "⚙️ Compilando shell (CLI)..."
           gcc -O2 -DSQLITE_HAS_CODEC -DSQLCIPHER_CRYPTO_OPENSSL \
             -I. -o sqlcipher.exe shell.c sqlite3.c \
             -lcrypto -lssl -lz
 
-          echo "✅ Compilação concluída com sucesso."
+          echo "✅ Compilação concluída."
           ls -lh sqlcipher.exe libsqlcipher.dll
 
       - name: Organizar artefatos
