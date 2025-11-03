@@ -36,9 +36,14 @@ jobs:
           TAG="v4.5.5"
           echo "📦 Baixando SQLCipher versão $TAG..."
           curl -L -o sqlcipher.tar.gz "https://github.com/sqlcipher/sqlcipher/archive/refs/tags/${TAG}.tar.gz"
+          echo "📂 Extraindo..."
           tar -xzf sqlcipher.tar.gz
-          mv sqlcipher-* sqlcipher
-          echo "✅ Extração concluída."
+
+          # Corrigir o nome do diretório automaticamente
+          SRC_DIR=$(tar -tf sqlcipher.tar.gz | head -1 | cut -d/ -f1)
+          echo "📁 Diretório extraído: $SRC_DIR"
+          mv "$SRC_DIR" sqlcipher
+          echo "✅ Diretório renomeado para 'sqlcipher'."
 
       - name: 🧱 Configurar build (OpenSSL)
         shell: msys2 {0}
@@ -50,7 +55,7 @@ jobs:
             --with-crypto-lib=openssl \
             CFLAGS="-DSQLITE_HAS_CODEC -DSQLCIPHER_CRYPTO_OPENSSL" \
             LDFLAGS="-lcrypto -lssl"
-          echo "✅ Configuração finalizada."
+          echo "✅ Configuração concluída."
 
       - name: ⚙️ Compilar SQLCipher
         shell: msys2 {0}
@@ -58,14 +63,15 @@ jobs:
         run: |
           echo "🔧 Compilando SQLCipher..."
           make -j$(nproc)
-          echo "✅ Compilação concluída com sucesso."
+          echo "✅ Compilação finalizada com sucesso."
 
       - name: 📂 Organizar artefatos
         shell: msys2 {0}
         run: |
           mkdir -p build-output
           find sqlcipher -type f \( -iname "*.exe" -o -iname "*.dll" -o -iname "sqlcipher" \) -exec cp {} build-output/ \;
-          ls -lh build-output
+          echo "📦 Artefatos encontrados:"
+          ls -lh build-output || echo "⚠️ Nenhum artefato encontrado!"
 
       - name: 📤 Publicar artefatos
         uses: actions/upload-artifact@v4
@@ -74,4 +80,4 @@ jobs:
           path: build-output/
 
       - name: ✅ Finalizar
-        run: echo "🏁 Build completo! Executável e DLL disponíveis em 'Artifacts'."
+        run: echo "🏁 Build completo! Artefatos (exe + dll) disponíveis em 'Artifacts'."
