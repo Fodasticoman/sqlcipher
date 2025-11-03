@@ -8,96 +8,73 @@ jobs:
     runs-on: windows-latest
 
     steps:
-      - name: Checkout repositório
+      - name: 🧰 Set up job
+        run: echo "Iniciando build do SQLCipher com OpenSSL para Windows..."
+
+      - name: 📦 Checkout repositório
         uses: actions/checkout@v4
 
-      - name: Instalar dependências (OpenSSL, Tcl, MSYS2)
+      - name: ⚙️ Instalar dependências (OpenSSL, Tcl, MSYS2)
+        shell: pwsh
         run: |
-          Write-Host "🔧 Instalando dependências..."
-          winget install -e --id ShiningLight.OpenSSL.Light --accept-source-agreements --accept-package-agreements
-          winget install -e --id ActiveState.ActiveTcl --accept-source-agreements --accept-package-agreements
-          choco install 7zip -y
-          Write-Host "✅ Dependências instaladas."
+          choco install -y openssl
+          choco install -y msys2
+          choco install -y tcl
+          echo "✅ Dependências instaladas com sucesso."
 
-      - name: Configurar ambiente MSYS2
-        uses: msys2/setup-msys2@v2
-        with:
-          msystem: MINGW64
-          update: true
-          install: >-
-            base-devel
-            autoconf
-            automake
-            libtool
-            make
-            pkg-config
-            mingw-w64-x86_64-toolchain
-            mingw-w64-x86_64-openssl
-            mingw-w64-x86_64-zlib
-            tcl
-
-      - name: Baixar e extrair SQLCipher
+      - name: 🧩 Configurar ambiente MSYS2
         shell: bash
         run: |
-          set -euo pipefail
-          TAG="v4.5.5"
-          echo "📦 Baixando SQLCipher versão $TAG..."
-          curl -L --retry 5 --retry-delay 3 --fail \
-            "https://github.com/sqlcipher/sqlcipher/archive/refs/tags/${TAG}.tar.gz" \
-            -o sqlcipher.tar.gz
+          echo "Configurando MSYS2..."
+          export PATH="/c/msys64/usr/bin:/c/msys64/mingw64/bin:$PATH"
+          pacman -Sy --noconfirm
+          pacman -S --noconfirm make tcl openssl-devel mingw-w64-x86_64-gcc unzip
 
-          echo "📦 Extraindo..."
-          mkdir extract && cd extract
-          7z x ../sqlcipher.tar.gz -y >/dev/null
-          7z x sqlcipher.tar -y >/dev/null
-          rm sqlcipher.tar
-          EXTRACTED_DIR=$(ls -d sqlcipher-* | head -n 1)
-          mv "$EXTRACTED_DIR" ../sqlcipher
-          cd ..
-          echo "✅ SQLCipher extraído."
-
-      - name: Gerar arquivos amalgamados via Makefile
-        shell: msys2 {0}
+      - name: 📥 Baixar e extrair SQLCipher
+        shell: bash
         run: |
-          set -euo pipefail
-          cd sqlcipher
-          echo "🔧 Preparando ambiente autoconf..."
-          autoreconf --install
-          ./configure --enable-tempstore=yes CFLAGS="-DSQLITE_HAS_CODEC" LDFLAGS="-lcrypto -lssl -lz"
-          echo "🧩 Gerando arquivos amalgamados..."
+          echo "📦 Baixando SQLCipher v4.5.0..."
+          curl -L -o sqlcipher.zip https://github.com/sqlcipher/sqlcipher/archive/refs/tags/v4.5.0.zip
+          unzip -q sqlcipher.zip
+          mv sqlcipher-4.5.0 sqlcipher
+
+      - name: 🧱 Gerar arquivos amalgamados via Makefile
+        shell: bash
+        working-directory: sqlcipher
+        run: |
+          echo "🔧 Gerando arquivos amalgamados (sqlite3.c e shell.c)..."
           make sqlite3.c
-          make shell.c
-          echo "✅ Arquivos sqlite3.c e shell.c prontos:"
-          ls -lh sqlite3.c shell.c
 
-      - name: Compilar SQLCipher com OpenSSL
-        shell: msys2 {0}
+      - name: 🛠️ Compilar SQLCipher com OpenSSL
+        shell: bash
+        working-directory: sqlcipher
         run: |
-          set -euo pipefail
-          cd sqlcipher
-          echo "⚙️ Compilando DLL e binário..."
-          gcc -O2 -DSQLITE_HAS_CODEC -DSQLCIPHER_CRYPTO_OPENSSL \
-            -I. -shared -o libsqlcipher.dll sqlite3.c \
-            -lcrypto -lssl -lz
+          echo "⚙️ Compilando SQLCipher com suporte a OpenSSL..."
+          gcc -DSQLITE_HAS_CODEC -DSQLCIPHER_CRYPTO_OPENSSL \
+              -I. -I/usr/include -I/usr/include/openssl \
+              -O2 -shared -o libsqlcipher.dll sqlite3.c -lcrypto -lpthread -lm
+          gcc -DSQLITE_HAS_CODEC -DSQLCIPHER_CRYPTO_OPENSSL \
+              -I. -I/usr/include -I/usr/include/openssl \
+              -O2 shell.c -o sqlcipher.exe libsqlcipher.dll -lcrypto -lpthread -lm
+          echo "✅ Compilação concluída!"
 
-          gcc -O2 -DSQLITE_HAS_CODEC -DSQLCIPHER_CRYPTO_OPENSSL \
-            -I. -o sqlcipher.exe shell.c sqlite3.c \
-            -lcrypto -lssl -lz
-
-          echo "✅ Compilação concluída:"
-          ls -lh sqlcipher.exe libsqlcipher.dll
-
-      - name: Organizar artefatos
+      - name: 📂 Organizar e publicar artefatos
         shell: bash
         run: |
+          echo "📦 Procurando binários gerados..."
           mkdir -p build-output
-          cp sqlcipher/sqlcipher.exe build-output/sqlcipher.exe || true
-          cp sqlcipher/libsqlcipher.dll build-output/libsqlcipher.dll || true
-          echo "✅ Artefatos copiados:"
-          ls -lh build-output
 
-      - name: Publicar artefatos
+          # Procurar executáveis e DLLs em qualquer subpasta
+          find sqlcipher -type f \( -iname "*.exe" -o -iname "*.dll" \) -exec cp {} build-output/ \; || true
+
+          echo "✅ Artefatos encontrados:"
+          ls -lh build-output || echo "⚠️ Nenhum artefato encontrado!"
+
+      - name: 📤 Publicar artefatos
         uses: actions/upload-artifact@v4
         with:
           name: sqlcipher-windows
           path: build-output/
+
+      - name: ✅ Complete job
+        run: echo "Build SQLCipher (Windows) concluído com sucesso!"
