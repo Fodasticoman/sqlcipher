@@ -45,15 +45,14 @@ jobs:
             "https://github.com/sqlcipher/sqlcipher/archive/refs/tags/${TAG}.tar.gz" \
             -o sqlcipher.tar.gz
 
-          echo "📦 Extraindo usando 7-Zip (sem SIGPIPE)..."
-          7z x sqlcipher.tar.gz -so | 7z x -si -ttar >/dev/null
+          echo "📦 Extraindo com 7-Zip (modo seguro)..."
+          mkdir extract
+          cd extract
+          7z x ../sqlcipher.tar.gz -y >/dev/null
+          7z x sqlcipher.tar -y >/dev/null
+          rm sqlcipher.tar
 
-          # Identifica a pasta extraída
-          EXTRACTED_DIR=$(7z l sqlcipher.tar.gz | grep "D" | grep -m1 "sqlcipher-" | awk '{print $6}' | tr -d '\r')
-          if [ -z "$EXTRACTED_DIR" ]; then
-            EXTRACTED_DIR=$(ls -d sqlcipher-* | head -n 1)
-          fi
-
+          EXTRACTED_DIR=$(ls -d sqlcipher-* | head -n 1)
           if [ ! -d "$EXTRACTED_DIR" ]; then
             echo "❌ Erro: diretório não encontrado após extração!"
             ls -l
@@ -61,8 +60,8 @@ jobs:
           fi
 
           echo "📂 Pasta extraída: $EXTRACTED_DIR"
-          mv "$EXTRACTED_DIR" sqlcipher
-          cd sqlcipher
+          mv "$EXTRACTED_DIR" ../sqlcipher
+          cd ..
           echo "✅ SQLCipher $TAG pronto para compilação."
 
       - name: Gerar arquivos amalgamados com Tcl
@@ -115,7 +114,7 @@ jobs:
           echo "✅ Artefatos copiados:"
           ls -lh build-output
 
-      - name: Publicar artefatos compilados
+      - name: Compactar e publicar artefatos
         uses: actions/upload-artifact@v4
         with:
           name: sqlcipher-windows
