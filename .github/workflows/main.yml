@@ -21,7 +21,7 @@ jobs:
       # =============================
       # 2. Instalar MSYS2 e dependências completas
       # =============================
-      - name: Configurar ambiente MSYS2 com todas as dependências
+      - name: Configurar ambiente MSYS2
         uses: msys2/setup-msys2@v2
         with:
           msystem: MINGW64
@@ -50,17 +50,27 @@ jobs:
       # =============================
       # 3. Baixar o código-fonte do SQLCipher
       # =============================
-      - name: Baixar SQLCipher
+      - name: Baixar SQLCipher (com fallback seguro de certificado)
         shell: bash
         run: |
           set -euo pipefail
           TAG="v4.5.5"
-          echo "Baixando SQLCipher versão $TAG..."
-          curl -L "https://github.com/sqlcipher/sqlcipher/archive/refs/tags/${TAG}.tar.gz" -o sqlcipher.tar.gz
+          echo "📦 Baixando SQLCipher versão $TAG..."
+
+          # ⚙️ Corrige bug CRYPT_E_REVOCATION_OFFLINE
+          # Desativa revocation-check de certificados apenas nesta sessão
+          export CURL_SSL_BACKEND=schannel
+          echo "schannel" > ~/.curlrc
+          echo "ssl-revoke-best-effort" >> ~/.curlrc
+
+          # Baixar usando retry e fallback
+          curl -L --retry 5 --retry-delay 3 --fail "https://github.com/sqlcipher/sqlcipher/archive/refs/tags/${TAG}.tar.gz" -o sqlcipher.tar.gz
+
+          echo "📦 Extraindo..."
           tar -xzf sqlcipher.tar.gz
           mv sqlcipher-* sqlcipher
           cd sqlcipher
-          echo "✅ SQLCipher extraído."
+          echo "✅ SQLCipher versão $TAG extraído com sucesso."
 
       # =============================
       # 4. Gerar arquivos amalgamados (sqlite3.c e shell.c)
@@ -80,9 +90,9 @@ jobs:
           ls -lh sqlite3.c shell.c
 
       # =============================
-      # 5. Configurar e compilar SQLCipher (gerando DLL + EXE)
+      # 5. Configurar e compilar SQLCipher
       # =============================
-      - name: Compilar SQLCipher com suporte a OpenSSL
+      - name: Compilar SQLCipher com OpenSSL
         shell: msys2 {0}
         run: |
           set -euo pipefail
@@ -110,7 +120,7 @@ jobs:
           ls -lh *.exe || true
 
       # =============================
-      # 6. Copiar artefatos finais (DLL e EXE)
+      # 6. Copiar artefatos finais
       # =============================
       - name: Organizar artefatos
         shell: bash
