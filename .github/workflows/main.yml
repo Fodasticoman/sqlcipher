@@ -11,13 +11,13 @@ jobs:
       - name: Checkout repositório
         uses: actions/checkout@v4
 
-      - name: Instalar dependências essenciais
+      - name: Instalar dependências (OpenSSL, Tcl, MSYS2)
         run: |
-          Write-Host "🔧 Instalando OpenSSL, Tcl e 7-Zip..."
+          Write-Host "🔧 Instalando dependências..."
           winget install -e --id ShiningLight.OpenSSL.Light --accept-source-agreements --accept-package-agreements
           winget install -e --id ActiveState.ActiveTcl --accept-source-agreements --accept-package-agreements
           choco install 7zip -y
-          Write-Host "✅ Dependências instaladas com sucesso."
+          Write-Host "✅ Dependências instaladas."
 
       - name: Configurar ambiente MSYS2
         uses: msys2/setup-msys2@v2
@@ -46,7 +46,7 @@ jobs:
             "https://github.com/sqlcipher/sqlcipher/archive/refs/tags/${TAG}.tar.gz" \
             -o sqlcipher.tar.gz
 
-          echo "📦 Extraindo com 7-Zip..."
+          echo "📦 Extraindo..."
           mkdir extract && cd extract
           7z x ../sqlcipher.tar.gz -y >/dev/null
           7z x sqlcipher.tar -y >/dev/null
@@ -54,32 +54,20 @@ jobs:
           EXTRACTED_DIR=$(ls -d sqlcipher-* | head -n 1)
           mv "$EXTRACTED_DIR" ../sqlcipher
           cd ..
-          echo "✅ SQLCipher $TAG pronto para compilação."
+          echo "✅ SQLCipher extraído."
 
-      - name: Gerar arquivos amalgamados via Tcl
-        shell: bash
+      - name: Gerar arquivos amalgamados via Makefile
+        shell: msys2 {0}
         run: |
           set -euo pipefail
-          echo "🔧 Gerando sqlite3.c e shell.c via Tcl..."
           cd sqlcipher
-
-          # ✅ Garantir que o diretório tsrc exista e contenha os headers
-          echo "📂 Preparando diretório tsrc..."
-          mkdir -p tsrc
-          cp -r src/* tsrc/ || true
-
-          # ⚙️ Verifica se sqlite3.h existe, senão cria um dummy (evita erro fatal)
-          if [ ! -f tsrc/sqlite3.h ]; then
-            echo "// placeholder sqlite3.h" > tsrc/sqlite3.h
-          fi
-
-          echo "🧩 Executando mksqlite3c.tcl..."
-          tclsh tool/mksqlite3c.tcl > sqlite3.c
-
-          echo "🧩 Executando mkshellc.tcl..."
-          tclsh tool/mkshellc.tcl > shell.c
-
-          echo "✅ Arquivos amalgamados gerados com sucesso:"
+          echo "🔧 Preparando ambiente autoconf..."
+          autoreconf --install
+          ./configure --enable-tempstore=yes CFLAGS="-DSQLITE_HAS_CODEC" LDFLAGS="-lcrypto -lssl -lz"
+          echo "🧩 Gerando arquivos amalgamados..."
+          make sqlite3.c
+          make shell.c
+          echo "✅ Arquivos sqlite3.c e shell.c prontos:"
           ls -lh sqlite3.c shell.c
 
       - name: Compilar SQLCipher com OpenSSL
@@ -87,17 +75,16 @@ jobs:
         run: |
           set -euo pipefail
           cd sqlcipher
-          echo "⚙️ Compilando libsqlcipher.dll..."
+          echo "⚙️ Compilando DLL e binário..."
           gcc -O2 -DSQLITE_HAS_CODEC -DSQLCIPHER_CRYPTO_OPENSSL \
             -I. -shared -o libsqlcipher.dll sqlite3.c \
             -lcrypto -lssl -lz
-          
-          echo "⚙️ Compilando shell (CLI)..."
+
           gcc -O2 -DSQLITE_HAS_CODEC -DSQLCIPHER_CRYPTO_OPENSSL \
             -I. -o sqlcipher.exe shell.c sqlite3.c \
             -lcrypto -lssl -lz
 
-          echo "✅ Compilação concluída."
+          echo "✅ Compilação concluída:"
           ls -lh sqlcipher.exe libsqlcipher.dll
 
       - name: Organizar artefatos
