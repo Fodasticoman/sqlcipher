@@ -27,11 +27,33 @@ jobs:
             mingw-w64-x86_64-openssl
             mingw-w64-x86_64-zlib
 
+      - name: Detectar última versão com amalgamados disponíveis
+        id: detect-version
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "🔍 Buscando versão mais recente do SQLCipher com arquivos amalgamados..."
+
+          TAGS=("v4.6.0" "v4.5.6" "v4.5.5" "v4.5.4" "v4.5.3" "v4.5.2" "v4.5.1" "v4.5.0")
+
+          for TAG in "${TAGS[@]}"; do
+            BASE_URL="https://raw.githubusercontent.com/sqlcipher/sqlcipher/${TAG}"
+            TEST_URL="$BASE_URL/sqlite3.c"
+            if curl --head --silent --fail "$TEST_URL" >/dev/null; then
+              echo "✅ Versão compatível encontrada: $TAG"
+              echo "version=$TAG" >> $GITHUB_OUTPUT
+              exit 0
+            fi
+          done
+
+          echo "⚠️ Nenhuma versão recente encontrada, usando fallback v4.5.0."
+          echo "version=v4.5.0" >> $GITHUB_OUTPUT
+
       - name: Baixar e extrair SQLCipher
         shell: bash
         run: |
           set -euo pipefail
-          TAG="v4.5.5"
+          TAG="${{ steps.detect-version.outputs.version }}"
           echo "📦 Baixando SQLCipher versão $TAG..."
 
           curl -L --retry 5 --retry-delay 3 --fail \
@@ -54,10 +76,22 @@ jobs:
         run: |
           set -euo pipefail
           cd sqlcipher
-          echo "📥 Baixando arquivos amalgamados oficiais..."
-          curl -L --fail -o sqlite3.c "https://raw.githubusercontent.com/sqlcipher/sqlcipher/v4.5.5/sqlite3.c"
-          curl -L --fail -o sqlite3.h "https://raw.githubusercontent.com/sqlcipher/sqlcipher/v4.5.5/sqlite3.h"
-          curl -L --fail -o shell.c "https://raw.githubusercontent.com/sqlcipher/sqlcipher/v4.5.5/src/shell.c"
+          TAG="${{ steps.detect-version.outputs.version }}"
+          echo "📥 Baixando arquivos amalgamados oficiais da versão $TAG..."
+
+          BASE_URL="https://raw.githubusercontent.com/sqlcipher/sqlcipher/${TAG}"
+          FILES=("sqlite3.c" "sqlite3.h" "src/shell.c")
+          for FILE in "${FILES[@]}"; do
+            URL="$BASE_URL/$FILE"
+            if curl --head --silent --fail "$URL" >/dev/null; then
+              echo "⬇️  Baixando $FILE..."
+              curl -L --fail -o "$(basename $FILE)" "$URL"
+            else
+              echo "⚠️  Arquivo $FILE não encontrado em $URL"
+              exit 1
+            fi
+          done
+
           echo "✅ Arquivos amalgamados prontos:"
           ls -lh sqlite3.c sqlite3.h shell.c
 
@@ -67,20 +101,26 @@ jobs:
           set -euo pipefail
           cd sqlcipher
 
-          echo "⚙️ Configurando compilação..."
+          echo "⚙️ Compilando SQLCipher..."
+          gcc -O2 -DSQLITE_HAS_CODEC -DSQLCIPHER_CRYPTO_OPENSSL \
+            -I. -shared -o libsqlcipher.dll sqlite3.c \
+            -lcrypto -lssl -lz
+
+          echo "⚙️ Compilando shell (CLI)..."
           gcc -O2 -DSQLITE_HAS_CODEC -DSQLCIPHER_CRYPTO_OPENSSL \
             -I. -o sqlcipher.exe shell.c sqlite3.c \
             -lcrypto -lssl -lz
 
           echo "✅ Compilação concluída:"
-          ls -lh sqlcipher.exe || true
+          ls -lh sqlcipher.exe libsqlcipher.dll || true
 
       - name: Organizar artefatos
         shell: bash
         run: |
           mkdir -p build-output
           cp sqlcipher/sqlcipher.exe build-output/sqlcipher.exe || true
-          echo "✅ Artefato copiado:"
+          cp sqlcipher/libsqlcipher.dll build-output/libsqlcipher.dll || true
+          echo "✅ Artefatos copiados:"
           ls -lh build-output
 
       - name: Publicar artefatos
