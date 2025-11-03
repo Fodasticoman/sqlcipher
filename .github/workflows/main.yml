@@ -8,13 +8,13 @@ jobs:
     runs-on: windows-latest
 
     steps:
-      - name: 🧰 Iniciar job
-        run: echo "🚀 Iniciando build do SQLCipher (OpenSSL + MSYS2 no Windows)..."
+      - name: 🚀 Iniciar
+        run: echo "Iniciando build SQLCipher (OpenSSL + MSYS2 no Windows)..."
 
       - name: 📦 Checkout repositório
         uses: actions/checkout@v4
 
-      - name: ⚙️ Configurar ambiente MSYS2
+      - name: ⚙️ Instalar MSYS2 e dependências
         uses: msys2/setup-msys2@v2
         with:
           update: true
@@ -28,6 +28,7 @@ jobs:
             mingw-w64-x86_64-pkg-config
             tar
             curl
+            unzip
 
       - name: 📥 Baixar e extrair SQLCipher
         shell: msys2 {0}
@@ -36,14 +37,18 @@ jobs:
           TAG="v4.5.5"
           echo "📦 Baixando SQLCipher versão $TAG..."
           curl -L -o sqlcipher.tar.gz "https://github.com/sqlcipher/sqlcipher/archive/refs/tags/${TAG}.tar.gz"
-          echo "📂 Extraindo..."
-          tar -xzf sqlcipher.tar.gz
 
-          # Corrigir o nome do diretório automaticamente
-          SRC_DIR=$(tar -tf sqlcipher.tar.gz | head -1 | cut -d/ -f1)
-          echo "📁 Diretório extraído: $SRC_DIR"
-          mv "$SRC_DIR" sqlcipher
-          echo "✅ Diretório renomeado para 'sqlcipher'."
+          echo "📂 Extraindo com proteção contra SIGPIPE..."
+          mkdir -p sqlcipher-src
+          tar -xzf sqlcipher.tar.gz -C sqlcipher-src --strip-components=1 || true
+
+          if [ ! -d "sqlcipher-src" ] || [ -z "$(ls -A sqlcipher-src)" ]; then
+            echo "❌ Falha na extração. Tentando método alternativo..."
+            7z x sqlcipher.tar.gz -osqlcipher-src > /dev/null
+          fi
+
+          echo "✅ Extração concluída."
+          mv sqlcipher-src sqlcipher
 
       - name: 🧱 Configurar build (OpenSSL)
         shell: msys2 {0}
@@ -61,16 +66,16 @@ jobs:
         shell: msys2 {0}
         working-directory: sqlcipher
         run: |
-          echo "🔧 Compilando SQLCipher..."
+          echo "🔧 Compilando..."
           make -j$(nproc)
-          echo "✅ Compilação finalizada com sucesso."
+          echo "✅ Compilação finalizada."
 
       - name: 📂 Organizar artefatos
         shell: msys2 {0}
         run: |
           mkdir -p build-output
           find sqlcipher -type f \( -iname "*.exe" -o -iname "*.dll" -o -iname "sqlcipher" \) -exec cp {} build-output/ \;
-          echo "📦 Artefatos encontrados:"
+          echo "📦 Artefatos:"
           ls -lh build-output || echo "⚠️ Nenhum artefato encontrado!"
 
       - name: 📤 Publicar artefatos
@@ -80,4 +85,4 @@ jobs:
           path: build-output/
 
       - name: ✅ Finalizar
-        run: echo "🏁 Build completo! Artefatos (exe + dll) disponíveis em 'Artifacts'."
+        run: echo "🏁 Build completo! Artefatos disponíveis em 'Artifacts'."
