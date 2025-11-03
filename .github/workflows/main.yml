@@ -26,8 +26,6 @@ jobs:
             pkg-config
             tcl
             git
-            tar
-            gzip
             mingw-w64-x86_64-toolchain
             mingw-w64-x86_64-gcc
             mingw-w64-x86_64-make
@@ -36,7 +34,7 @@ jobs:
             mingw-w64-x86_64-zlib
             mingw-w64-x86_64-tcl
 
-      - name: Baixar SQLCipher com fallback SSL
+      - name: Baixar e extrair SQLCipher
         shell: bash
         run: |
           set -euo pipefail
@@ -47,13 +45,18 @@ jobs:
             "https://github.com/sqlcipher/sqlcipher/archive/refs/tags/${TAG}.tar.gz" \
             -o sqlcipher.tar.gz
 
-          echo "📦 Extraindo (modo silencioso)..."
-          tar -xzf sqlcipher.tar.gz --warning=no-timestamp >/dev/null 2>&1 || true
+          echo "📦 Extraindo usando 7-Zip (sem SIGPIPE)..."
+          7z x sqlcipher.tar.gz -so | 7z x -si -ttar >/dev/null
 
-          # Confirma se a pasta foi realmente extraída
-          EXTRACTED_DIR=$(tar -tzf sqlcipher.tar.gz | head -1 | cut -f1 -d"/")
+          # Identifica a pasta extraída
+          EXTRACTED_DIR=$(7z l sqlcipher.tar.gz | grep "D" | grep -m1 "sqlcipher-" | awk '{print $6}' | tr -d '\r')
+          if [ -z "$EXTRACTED_DIR" ]; then
+            EXTRACTED_DIR=$(ls -d sqlcipher-* | head -n 1)
+          fi
+
           if [ ! -d "$EXTRACTED_DIR" ]; then
-            echo "❌ Erro: pasta extraída não encontrada!"
+            echo "❌ Erro: diretório não encontrado após extração!"
+            ls -l
             exit 1
           fi
 
@@ -99,7 +102,7 @@ jobs:
           echo "🧱 Compilando..."
           make -j$(nproc)
 
-          echo "✅ Compilação concluída. Listando binários..."
+          echo "✅ Compilação concluída."
           ls -lh .libs/ || true
           ls -lh *.dll *.exe || true
 
