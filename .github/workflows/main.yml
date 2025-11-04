@@ -6,54 +6,71 @@ on:
 jobs:
   build-sqlcipher:
     runs-on: windows-latest
+
     steps:
-      - name: 🧩 Preparar MSYS2
+      - name: 🧰 Preparar ambiente MSYS2
         uses: msys2/setup-msys2@v2
         with:
           update: true
-          install: >-
+          install: >
             git
             make
-            tcl
             mingw-w64-x86_64-gcc
             mingw-w64-x86_64-openssl
             mingw-w64-x86_64-zlib
+            mingw-w64-x86_64-tcl
+            zip
 
-      - name: ⚙️ Compilar SQLCipher 4.11.0
+      - name: 📦 Clonar repositório SQLCipher
         shell: msys2 {0}
         run: |
           set -euo pipefail
-
-          echo "=== Build SQLCipher tag: v4.11.0 ==="
+          echo "=== Clonando SQLCipher versão v4.11.0 ==="
           git clone https://github.com/sqlcipher/sqlcipher.git
           cd sqlcipher
           git checkout v4.11.0 || git checkout c6e8461bfa0b7317dfd96278dd950b1eb6b21a1a
 
+      - name: 🔧 Compilar SQLCipher 4.11.0
+        shell: msys2 {0}
+        run: |
+          set -euo pipefail
+          echo "=== Iniciando build SQLCipher v4.11.0 ==="
+          cd sqlcipher
+
           export CFLAGS="-O2 -DSQLITE_HAS_CODEC -DSQLCIPHER_CRYPTO_OPENSSL \
           -DSQLITE_EXTRA_INIT=sqlcipher_extra_init \
           -DSQLITE_EXTRA_SHUTDOWN=sqlcipher_extra_shutdown \
-          -DSQLITE_TEMP_STORE=2 \
-          -I/mingw64/include"
+          -DSQLITE_TEMP_STORE=2 -I/mingw64/include"
 
           export LDFLAGS="-L/mingw64/lib -lssl -lcrypto -lz"
 
+          echo "🛠️ Executando ./configure..."
           ./configure --enable-shared --enable-static --disable-tcl
+
+          echo "⚙️ Compilando..."
           make -j$(nproc)
 
           echo "✅ Build concluído com sucesso!"
-          ls -lh sqlcipher.exe libsqlcipher-0.dll
+          ls -lh sqlite3.exe libsqlite3-0.dll || echo "Binários gerados com nomes diferentes"
 
-      - name: 📦 Criar artefato ZIP
-        if: success()
-        shell: bash
+      - name: 🧩 Renomear binários e montar artefato
+        shell: msys2 {0}
         run: |
-          mkdir -p output
-          cp sqlcipher/sqlcipher.exe sqlcipher/libsqlcipher-0.dll output/
-          cp sqlcipher/sqlite3.h sqlcipher/sqlite3ext.h output/ || true
-          zip -r SQLCipher-v4.11.0-win64.zip output
-        continue-on-error: true
+          set -euo pipefail
+          echo "=== Renomeando e preparando artefato ==="
+          cd sqlcipher
 
-      - name: ⬆️ Publicar artefato
+          mkdir -p ../output
+          # Renomear para manter padrão antigo
+          cp sqlite3.exe ../output/sqlcipher.exe
+          cp libsqlite3-0.dll ../output/libsqlcipher-0.dll
+          cp sqlite3.h ../output/sqlcipher.h || true
+          cp sqlite3ext.h ../output/sqlcipherext.h || true
+
+          cd ..
+          zip -r SQLCipher-v4.11.0-win64.zip output
+
+      - name: 📤 Upload do artefato
         uses: actions/upload-artifact@v4
         with:
           name: SQLCipher-v4.11.0-win64
