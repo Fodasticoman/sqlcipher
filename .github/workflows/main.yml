@@ -23,14 +23,15 @@ jobs:
             mingw-w64-x86_64-zlib
             zip
 
-      - name: 🧹 Limpar diretório antigo (via MSYS2)
+      - name: 🧹 Limpar e preparar diretório
         shell: msys2 {0}
         run: |
           set -euo pipefail
-          echo "🧽 Limpando diretório antigo /d/a/sqlcipher..."
-          rm -rf /d/a/sqlcipher || true
-          mkdir -p /d/a/sqlcipher
-          echo "✅ Diretório limpo."
+          echo "🧽 Limpando diretório antigo..."
+          cd /d/a
+          rm -rf sqlcipher || true
+          mkdir -p sqlcipher
+          echo "✅ Diretório pronto para o clone."
 
       - name: 📦 Clonar repositório SQLCipher
         shell: msys2 {0}
@@ -41,9 +42,9 @@ jobs:
           git clone https://github.com/sqlcipher/sqlcipher.git
           cd sqlcipher
           git checkout v4.11.0 || git checkout c6e8461bfa0b7317dfd96278dd950b1eb6b21a1a
-          echo "✅ SQLCipher v4.11.0 clonado."
+          echo "✅ SQLCipher v4.11.0 clonado com sucesso."
 
-      - name: 🔧 Compilar SQLCipher 4.11.0
+      - name: 🔧 Compilar SQLCipher
         shell: msys2 {0}
         run: |
           set -euo pipefail
@@ -87,10 +88,10 @@ jobs:
           cp /mingw64/bin/libssl-3-x64.dll /d/a/sqlcipher/dist/ || true
           cp /mingw64/bin/zlib1.dll /d/a/sqlcipher/dist/ || true
 
-          echo "✅ Binários e dependências copiados para /d/a/sqlcipher/dist"
+          echo "✅ Binários copiados para /d/a/sqlcipher/dist"
           ls -lh /d/a/sqlcipher/dist
 
-      - name: 🧪 Testar versão compilada
+      - name: 🧪 Testar build
         shell: msys2 {0}
         run: |
           cd /d/a/sqlcipher/dist
@@ -98,18 +99,19 @@ jobs:
           ./sqlcipher ":memory:" "PRAGMA cipher_version;" || echo "⚠️ Teste de versão falhou."
           ./sqlcipher --version || true
 
-      - name: 🗜️ Compactar resultado final
+      - name: 🗜️ Compactar resultado
         shell: pwsh
         run: |
           $distPath = "D:/a/sqlcipher/dist"
+          $zipPath = "D:/a/sqlcipher/sqlcipher-4.11.0-win64.zip"
           if (-Not (Test-Path $distPath)) {
             Write-Error "❌ Diretório $distPath não encontrado!"
             exit 1
           }
-          Compress-Archive -Path "$distPath/*" -DestinationPath "D:/a/sqlcipher/sqlcipher-4.11.0-win64.zip" -Force
-          Write-Host "✅ Arquivo ZIP criado com sucesso."
+          Compress-Archive -Path "$distPath/*" -DestinationPath $zipPath -Force
+          Write-Host "✅ Arquivo ZIP criado: $zipPath"
 
-      - name: 📤 Upload do artefato compilado
+      - name: 📤 Upload do artefato
         uses: actions/upload-artifact@v4
         with:
           name: sqlcipher-4.11.0-win64
