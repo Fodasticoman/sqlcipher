@@ -8,39 +8,44 @@ jobs:
     runs-on: windows-latest
 
     steps:
-      - name: 🧹 Preparar ambiente MSYS2
+      - name: 🧹 Instalar MSYS2
         run: |
           choco install -y msys2
-          echo "MSYS2 instalado com sucesso."
+          echo "✅ MSYS2 instalado com sucesso."
 
-      - name: ⚙️ Atualizar MSYS2 e instalar dependências
+      - name: ⚙️ Atualizar pacotes e instalar dependências
         shell: C:\msys64\usr\bin\bash.exe -l {0}
         run: |
+          set -e
           pacman -Syu --noconfirm
-          pacman -S --noconfirm git make automake libtool mingw-w64-x86_64-gcc mingw-w64-x86_64-openssl mingw-w64-x86_64-zlib
+          pacman -S --noconfirm git make automake libtool mingw-w64-x86_64-gcc \
+            mingw-w64-x86_64-openssl mingw-w64-x86_64-zlib
+          echo "✅ Dependências instaladas."
 
-      - name: 🧬 Clonar SQLCipher v4.11.0
+      - name: 🧬 Clonar SQLCipher (v4.11.0)
         shell: C:\msys64\usr\bin\bash.exe -l {0}
         run: |
+          cd /d/a/
           git clone https://github.com/sqlcipher/sqlcipher.git
           cd sqlcipher
           git checkout v4.11.0
+          echo "✅ SQLCipher v4.11.0 clonado."
 
       - name: 🏗️ Configurar e compilar SQLCipher
         shell: C:\msys64\usr\bin\bash.exe -l {0}
-        working-directory: sqlcipher
         run: |
+          cd /d/a/sqlcipher/sqlcipher
           ./configure --enable-tempstore=yes \
             CFLAGS="-DSQLITE_HAS_CODEC -DSQLCIPHER_CRYPTO_OPENSSL -DSQLITE_TEMP_STORE=2 -O2" \
             LDFLAGS="-lcrypto -lssl -lz" \
             --disable-tcl
           make -j$(nproc)
-          echo "✅ Compilação concluída!"
+          echo "✅ Compilação concluída."
 
       - name: 📦 Copiar binários e dependências
         shell: C:\msys64\usr\bin\bash.exe -l {0}
-        working-directory: sqlcipher
         run: |
+          cd /d/a/sqlcipher/sqlcipher
           mkdir -p dist
           cp sqlcipher.exe dist/
           cp .libs/libsqlcipher-0.dll dist/ 2>/dev/null || true
@@ -52,9 +57,18 @@ jobs:
           cp /mingw64/bin/libssl-3-x64.dll dist/ || true
           cp /mingw64/bin/zlib1.dll dist/ || true
 
-      - name: 🗜️ Empacotar artefato final
+          echo "✅ Binários e DLLs copiados para ./dist"
+
+      - name: 🧪 Verificar versão compilada
+        shell: C:\msys64\usr\bin\bash.exe -l {0}
+        run: |
+          cd /d/a/sqlcipher/sqlcipher/dist
+          ./sqlcipher --version || echo "⚠️ Não foi possível verificar versão."
+
+      - name: 🗜️ Compactar resultado final
         run: |
           powershell Compress-Archive -Path "D:\a\sqlcipher\sqlcipher\sqlcipher\dist\*" -DestinationPath "sqlcipher-4.11.0-win64.zip"
+          echo "✅ Arquivo ZIP criado com sucesso."
 
       - name: 📤 Publicar artefato compilado
         uses: actions/upload-artifact@v4
