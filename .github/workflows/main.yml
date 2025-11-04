@@ -8,26 +8,26 @@ jobs:
     runs-on: windows-latest
 
     steps:
-      - name: 🧹 Preparar ambiente
+      - name: 🧹 Preparar ambiente MSYS2
         run: |
           choco install -y msys2
-          echo "Configuração inicial concluída."
+          echo "MSYS2 instalado com sucesso."
 
       - name: ⚙️ Atualizar MSYS2 e instalar dependências
-        shell: msys2 {0}
+        shell: C:\msys64\usr\bin\bash.exe -l {0}
         run: |
           pacman -Syu --noconfirm
           pacman -S --noconfirm git make automake libtool mingw-w64-x86_64-gcc mingw-w64-x86_64-openssl mingw-w64-x86_64-zlib
 
       - name: 🧬 Clonar SQLCipher v4.11.0
-        shell: msys2 {0}
+        shell: C:\msys64\usr\bin\bash.exe -l {0}
         run: |
           git clone https://github.com/sqlcipher/sqlcipher.git
           cd sqlcipher
           git checkout v4.11.0
 
       - name: 🏗️ Configurar e compilar SQLCipher
-        shell: msys2 {0}
+        shell: C:\msys64\usr\bin\bash.exe -l {0}
         working-directory: sqlcipher
         run: |
           ./configure --enable-tempstore=yes \
@@ -35,10 +35,10 @@ jobs:
             LDFLAGS="-lcrypto -lssl -lz" \
             --disable-tcl
           make -j$(nproc)
-          echo "✅ Compilação finalizada com sucesso!"
+          echo "✅ Compilação concluída!"
 
       - name: 📦 Copiar binários e dependências
-        shell: msys2 {0}
+        shell: C:\msys64\usr\bin\bash.exe -l {0}
         working-directory: sqlcipher
         run: |
           mkdir -p dist
@@ -47,15 +47,16 @@ jobs:
           cp sqlcipher.h dist/
           cp sqlcipherext.h dist/
 
-          # Copiar as DLLs necessárias do MSYS2
-          cp /mingw64/bin/libcrypto-3-x64.dll dist/
-          cp /mingw64/bin/zlib1.dll dist/
+          # Copiar dependências OpenSSL e Zlib
+          cp /mingw64/bin/libcrypto-3-x64.dll dist/ || true
+          cp /mingw64/bin/libssl-3-x64.dll dist/ || true
+          cp /mingw64/bin/zlib1.dll dist/ || true
 
-      - name: 🗜️ Empacotar artefatos
+      - name: 🗜️ Empacotar artefato final
         run: |
           powershell Compress-Archive -Path "D:\a\sqlcipher\sqlcipher\sqlcipher\dist\*" -DestinationPath "sqlcipher-4.11.0-win64.zip"
 
-      - name: 📤 Enviar artefato compilado
+      - name: 📤 Publicar artefato compilado
         uses: actions/upload-artifact@v4
         with:
           name: sqlcipher-4.11.0-win64
