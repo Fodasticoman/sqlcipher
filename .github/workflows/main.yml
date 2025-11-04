@@ -21,10 +21,12 @@ jobs:
               Write-Host "⚠️ Remoção direta falhou, tentando com robocopy..."
               New-Item -ItemType Directory -Path "D:/a/empty" -Force | Out-Null
               robocopy "D:/a/empty" $root /MIR | Out-Null
+              $LASTEXITCODE = 0  # força sucesso mesmo que robocopy retorne 1
               Remove-Item -Recurse -Force "D:/a/empty" -ErrorAction SilentlyContinue
             }
           }
           Write-Host "✅ Diretório limpo com sucesso."
+          exit 0  # garantir saída limpa
 
       # 🧰 Preparar ambiente MSYS2
       - name: 🧰 Preparar ambiente MSYS2
