@@ -19,16 +19,19 @@ jobs:
         with:
           update: true
           install: >-
-            make
+            base-devel
             autoconf
             automake
             libtool
-            mingw-w64-x86_64-gcc
-            mingw-w64-x86_64-openssl
-            mingw-w64-x86_64-pkg-config
+            make
             tar
             curl
             unzip
+            mingw-w64-x86_64-gcc
+            mingw-w64-x86_64-openssl
+            mingw-w64-x86_64-pkg-config
+            tcl
+            mingw-w64-x86_64-tcl
 
       - name: 📥 Baixar e extrair SQLCipher
         shell: msys2 {0}
@@ -38,7 +41,7 @@ jobs:
           echo "📦 Baixando SQLCipher versão $TAG..."
           curl -L -o sqlcipher.tar.gz "https://github.com/sqlcipher/sqlcipher/archive/refs/tags/${TAG}.tar.gz"
 
-          echo "📂 Extraindo com proteção contra SIGPIPE..."
+          echo "📂 Extraindo..."
           mkdir -p sqlcipher-src
           tar -xzf sqlcipher.tar.gz -C sqlcipher-src --strip-components=1 || true
 
@@ -75,7 +78,7 @@ jobs:
         run: |
           mkdir -p build-output
           find sqlcipher -type f \( -iname "*.exe" -o -iname "*.dll" -o -iname "sqlcipher" \) -exec cp {} build-output/ \;
-          echo "📦 Artefatos:"
+          echo "📦 Artefatos gerados:"
           ls -lh build-output || echo "⚠️ Nenhum artefato encontrado!"
 
       - name: 📤 Publicar artefatos
