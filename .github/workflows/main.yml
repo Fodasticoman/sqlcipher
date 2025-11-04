@@ -8,28 +8,6 @@ jobs:
     runs-on: windows-latest
 
     steps:
-      - name: 🧽 Limpar diretório antigo
-        shell: pwsh
-        run: |
-          $root = "D:/a/sqlcipher"
-          if (Test-Path $root) {
-            Write-Host "🧽 Limpando diretório antigo $root..."
-            try {
-              Remove-Item -Recurse -Force $root -ErrorAction Stop
-            } catch {
-              Write-Host "⚠️ Remoção direta falhou, tentando com robocopy..."
-              New-Item -ItemType Directory -Path "D:/a/empty" -Force | Out-Null
-              $result = robocopy "D:/a/empty" $root /MIR | Out-Null
-              if ($LASTEXITCODE -ge 8) {
-                Write-Error "❌ robocopy falhou com código $LASTEXITCODE"
-                exit 1
-              }
-              Remove-Item -Recurse -Force "D:/a/empty" -ErrorAction SilentlyContinue
-            }
-          }
-          Write-Host "✅ Diretório limpo com sucesso."
-          exit 0
-
       - name: 🧰 Preparar ambiente MSYS2
         uses: msys2/setup-msys2@v2
         with:
@@ -44,6 +22,15 @@ jobs:
             mingw-w64-x86_64-openssl
             mingw-w64-x86_64-zlib
             zip
+
+      - name: 🧹 Limpar diretório antigo (via MSYS2)
+        shell: msys2 {0}
+        run: |
+          set -euo pipefail
+          echo "🧽 Limpando diretório antigo /d/a/sqlcipher..."
+          rm -rf /d/a/sqlcipher || true
+          mkdir -p /d/a/sqlcipher
+          echo "✅ Diretório limpo."
 
       - name: 📦 Clonar repositório SQLCipher
         shell: msys2 {0}
@@ -89,13 +76,13 @@ jobs:
           cd /d/a/sqlcipher/sqlcipher
           mkdir -p /d/a/sqlcipher/dist
 
-          # Copiar binários
+          # Copiar binários principais
           cp sqlite3.exe /d/a/sqlcipher/dist/sqlcipher.exe || true
           cp .libs/libsqlcipher-0.dll /d/a/sqlcipher/dist/libsqlcipher-0.dll || true
           cp sqlite3.h /d/a/sqlcipher/dist/sqlcipher.h || true
           cp sqlite3ext.h /d/a/sqlcipher/dist/sqlcipherext.h || true
 
-          # Copiar DLLs do OpenSSL e Zlib
+          # Copiar dependências (OpenSSL + Zlib)
           cp /mingw64/bin/libcrypto-3-x64.dll /d/a/sqlcipher/dist/ || true
           cp /mingw64/bin/libssl-3-x64.dll /d/a/sqlcipher/dist/ || true
           cp /mingw64/bin/zlib1.dll /d/a/sqlcipher/dist/ || true
@@ -107,7 +94,9 @@ jobs:
         shell: msys2 {0}
         run: |
           cd /d/a/sqlcipher/dist
-          ./sqlcipher --version || echo "⚠️ Não foi possível verificar versão."
+          echo "🔍 Testando SQLCipher..."
+          ./sqlcipher ":memory:" "PRAGMA cipher_version;" || echo "⚠️ Teste de versão falhou."
+          ./sqlcipher --version || true
 
       - name: 🗜️ Compactar resultado final
         shell: pwsh
