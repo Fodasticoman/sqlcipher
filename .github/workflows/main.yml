@@ -67,11 +67,16 @@ jobs:
 
       - name: 🗜️ Compactar resultado final
         run: |
-          powershell Compress-Archive -Path "D:\a\sqlcipher\sqlcipher\sqlcipher\dist\*" -DestinationPath "sqlcipher-4.11.0-win64.zip"
+          $distPath = "D:/a/sqlcipher/sqlcipher/sqlcipher/dist"
+          if (-Not (Test-Path $distPath)) {
+            Write-Error "❌ Diretório $distPath não encontrado!"
+            exit 1
+          }
+          Compress-Archive -Path "$distPath/*" -DestinationPath "D:/a/sqlcipher/sqlcipher/sqlcipher-4.11.0-win64.zip" -Force
           echo "✅ Arquivo ZIP criado com sucesso."
 
       - name: 📤 Publicar artefato compilado
         uses: actions/upload-artifact@v4
         with:
           name: sqlcipher-4.11.0-win64
-          path: sqlcipher-4.11.0-win64.zip
+          path: D:/a/sqlcipher/sqlcipher/sqlcipher-4.11.0-win64.zip
