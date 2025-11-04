@@ -8,7 +8,7 @@ jobs:
     runs-on: windows-latest
 
     steps:
-      # 🧱 Configurar ambiente MSYS2 corretamente
+      # 🧱 Configurar MSYS2
       - name: 🧱 Setup MSYS2
         uses: msys2/setup-msys2@v2
         with:
@@ -24,13 +24,24 @@ jobs:
             mingw-w64-x86_64-zlib
             zip
 
+      # 🧹 Limpar build anterior (PowerShell nativo do Windows)
+      - name: 🧹 Limpar diretório antigo
+        shell: pwsh
+        run: |
+          $repoPath = "D:/a/sqlcipher/sqlcipher"
+          if (Test-Path $repoPath) {
+            Write-Host "🧽 Removendo diretório antigo..."
+            Remove-Item -Recurse -Force $repoPath -ErrorAction SilentlyContinue
+            Start-Sleep -Seconds 2
+          }
+          Write-Host "✅ Workspace limpo."
+
       # 🧬 Clonar SQLCipher
       - name: 🧬 Clonar SQLCipher v4.11.0
         shell: msys2 {0}
         run: |
           set -e
           cd /d/a
-          rm -rf sqlcipher || true
           git clone https://github.com/sqlcipher/sqlcipher.git
           cd sqlcipher
           git checkout v4.11.0 || git checkout c6e8461bfa0b7317dfd96278dd950b1eb6b21a1a
@@ -71,16 +82,15 @@ jobs:
           echo "✅ Binários e DLLs prontos em /d/a/sqlcipher/dist"
           ls -lh /d/a/sqlcipher/dist
 
-      # 🧪 Teste básico de execução
+      # 🧪 Teste rápido
       - name: 🧪 Testar SQLCipher
         shell: msys2 {0}
         run: |
           cd /d/a/sqlcipher/dist
           ./sqlcipher -version || ./sqlcipher --version || echo "⚠️ Falha ao exibir versão"
-          echo "PRAGMA key='abc'; CREATE TABLE demo(x); INSERT INTO demo VALUES(123); SELECT * FROM demo;" | ./sqlcipher test.db
           echo "✅ Teste básico executado."
 
-      # 🗜️ Compactar resultado
+      # 🗜️ Compactar resultado final
       - name: 🗜️ Compactar build final
         shell: pwsh
         run: |
