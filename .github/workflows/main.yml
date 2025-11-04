@@ -8,8 +8,8 @@ jobs:
     runs-on: windows-latest
 
     steps:
-      # 🧱 Configurar MSYS2
-      - name: 🧱 Setup MSYS2
+      # 🧱 Configurar MSYS2 e dependências
+      - name: 🧱 Instalar MSYS2 e pacotes base
         uses: msys2/setup-msys2@v2
         with:
           update: true
@@ -24,19 +24,26 @@ jobs:
             mingw-w64-x86_64-zlib
             zip
 
-      # 🧹 Limpar build anterior (PowerShell nativo do Windows)
-      - name: 🧹 Limpar diretório antigo
+      # 🧹 Limpar qualquer build anterior (fora do MSYS)
+      - name: 🧹 Limpar diretório anterior
         shell: pwsh
         run: |
-          $repoPath = "D:/a/sqlcipher/sqlcipher"
-          if (Test-Path $repoPath) {
+          $base = "D:/a/sqlcipher"
+          $repo = "$base/sqlcipher"
+          if (Test-Path $repo) {
             Write-Host "🧽 Removendo diretório antigo..."
-            Remove-Item -Recurse -Force $repoPath -ErrorAction SilentlyContinue
-            Start-Sleep -Seconds 2
+            try {
+              Remove-Item -Recurse -Force $repo -ErrorAction Stop
+            } catch {
+              Write-Host "⚠️ Remoção direta falhou, tentando com robocopy..."
+              New-Item -ItemType Directory -Path "$base/empty" -Force | Out-Null
+              robocopy "$base/empty" "$repo" /MIR | Out-Null
+              Remove-Item -Recurse -Force "$base/empty" -ErrorAction SilentlyContinue
+            }
           }
-          Write-Host "✅ Workspace limpo."
+          Write-Host "✅ Diretório limpo com sucesso."
 
-      # 🧬 Clonar SQLCipher
+      # 🧬 Clonar SQLCipher 4.11.0
       - name: 🧬 Clonar SQLCipher v4.11.0
         shell: msys2 {0}
         run: |
@@ -54,7 +61,7 @@ jobs:
           set -e
           cd /d/a/sqlcipher/sqlcipher
 
-          echo "🧰 Gerando script configure..."
+          echo "🧰 Gerando configure..."
           autoreconf -fi
 
           echo "⚙️ Executando configure..."
@@ -68,42 +75,41 @@ jobs:
           echo "✅ Compilação concluída."
 
           mkdir -p /d/a/sqlcipher/dist
-
           cp sqlcipher.exe /d/a/sqlcipher/dist/ 2>/dev/null || cp sqlite3.exe /d/a/sqlcipher/dist/sqlcipher.exe
           cp .libs/libsqlcipher-0.dll /d/a/sqlcipher/dist/ 2>/dev/null || true
           cp sqlcipher.h /d/a/sqlcipher/dist/ || cp sqlite3.h /d/a/sqlcipher/dist/sqlcipher.h
           cp sqlcipherext.h /d/a/sqlcipher/dist/ || cp sqlite3ext.h /d/a/sqlcipher/dist/sqlcipherext.h
 
-          # 🔗 Copiar dependências (OpenSSL + zlib)
+          # 🔗 Copiar DLLs essenciais
           cp /mingw64/bin/libcrypto-3-x64.dll /d/a/sqlcipher/dist/ || true
           cp /mingw64/bin/libssl-3-x64.dll /d/a/sqlcipher/dist/ || true
           cp /mingw64/bin/zlib1.dll /d/a/sqlcipher/dist/ || true
 
-          echo "✅ Binários e DLLs prontos em /d/a/sqlcipher/dist"
+          echo "✅ Binários e DLLs prontos:"
           ls -lh /d/a/sqlcipher/dist
 
-      # 🧪 Teste rápido
+      # 🧪 Testar execução
       - name: 🧪 Testar SQLCipher
         shell: msys2 {0}
         run: |
           cd /d/a/sqlcipher/dist
           ./sqlcipher -version || ./sqlcipher --version || echo "⚠️ Falha ao exibir versão"
-          echo "✅ Teste básico executado."
 
-      # 🗜️ Compactar resultado final
-      - name: 🗜️ Compactar build final
+      # 🗜️ Compactar build final
+      - name: 🗜️ Compactar resultado final
         shell: pwsh
         run: |
-          $distPath = "D:/a/sqlcipher/dist"
-          if (-Not (Test-Path $distPath)) {
-            Write-Error "❌ Diretório $distPath não encontrado!"
+          $dist = "D:/a/sqlcipher/dist"
+          $zip = "D:/a/sqlcipher/sqlcipher-4.11.0-win64.zip"
+          if (-Not (Test-Path $dist)) {
+            Write-Error "❌ Diretório de saída não encontrado!"
             exit 1
           }
-          Compress-Archive -Path "$distPath/*" -DestinationPath "D:/a/sqlcipher/sqlcipher-4.11.0-win64.zip" -Force
-          echo "✅ ZIP criado com sucesso."
+          Compress-Archive -Path "$dist/*" -DestinationPath $zip -Force
+          Write-Host "✅ ZIP criado: $zip"
 
       # 📤 Publicar artefato
-      - name: 📤 Publicar artefato final
+      - name: 📤 Publicar artefato
         uses: actions/upload-artifact@v4
         with:
           name: sqlcipher-4.11.0-win64
