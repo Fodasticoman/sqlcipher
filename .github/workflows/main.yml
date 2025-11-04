@@ -42,41 +42,41 @@ jobs:
           make -j$(nproc)
           echo "✅ Compilação concluída."
 
-      - name: 📦 Copiar binários e dependências
+      - name: 📦 Copiar binários e dependências para o diretório Windows
         shell: C:\msys64\usr\bin\bash.exe -l {0}
         run: |
-          cd /d/a/sqlcipher/sqlcipher
-          mkdir -p dist
-          cp sqlcipher.exe dist/
-          cp .libs/libsqlcipher-0.dll dist/ 2>/dev/null || true
-          cp sqlcipher.h dist/
-          cp sqlcipherext.h dist/
+          # Criar diretório visível no Windows (fora do MSYS)
+          mkdir -p /d/a/sqlcipher/dist
+          cp sqlcipher.exe /d/a/sqlcipher/dist/
+          cp .libs/libsqlcipher-0.dll /d/a/sqlcipher/dist/ 2>/dev/null || true
+          cp sqlcipher.h /d/a/sqlcipher/dist/
+          cp sqlcipherext.h /d/a/sqlcipher/dist/
 
-          # Copiar dependências OpenSSL e Zlib
-          cp /mingw64/bin/libcrypto-3-x64.dll dist/ || true
-          cp /mingw64/bin/libssl-3-x64.dll dist/ || true
-          cp /mingw64/bin/zlib1.dll dist/ || true
+          # Copiar DLLs do OpenSSL e Zlib
+          cp /mingw64/bin/libcrypto-3-x64.dll /d/a/sqlcipher/dist/ || true
+          cp /mingw64/bin/libssl-3-x64.dll /d/a/sqlcipher/dist/ || true
+          cp /mingw64/bin/zlib1.dll /d/a/sqlcipher/dist/ || true
 
-          echo "✅ Binários e DLLs copiados para ./dist"
+          echo "✅ Arquivos copiados para /d/a/sqlcipher/dist"
 
-      - name: 🧪 Verificar versão compilada
+      - name: 🧪 Testar versão compilada
         shell: C:\msys64\usr\bin\bash.exe -l {0}
         run: |
-          cd /d/a/sqlcipher/sqlcipher/dist
+          cd /d/a/sqlcipher/dist
           ./sqlcipher --version || echo "⚠️ Não foi possível verificar versão."
 
       - name: 🗜️ Compactar resultado final
         run: |
-          $distPath = "D:/a/sqlcipher/sqlcipher/sqlcipher/dist"
+          $distPath = "D:/a/sqlcipher/dist"
           if (-Not (Test-Path $distPath)) {
             Write-Error "❌ Diretório $distPath não encontrado!"
             exit 1
           }
-          Compress-Archive -Path "$distPath/*" -DestinationPath "D:/a/sqlcipher/sqlcipher/sqlcipher-4.11.0-win64.zip" -Force
+          Compress-Archive -Path "$distPath/*" -DestinationPath "D:/a/sqlcipher/sqlcipher-4.11.0-win64.zip" -Force
           echo "✅ Arquivo ZIP criado com sucesso."
 
       - name: 📤 Publicar artefato compilado
         uses: actions/upload-artifact@v4
         with:
           name: sqlcipher-4.11.0-win64
-          path: D:/a/sqlcipher/sqlcipher/sqlcipher-4.11.0-win64.zip
+          path: D:/a/sqlcipher/sqlcipher-4.11.0-win64.zip
