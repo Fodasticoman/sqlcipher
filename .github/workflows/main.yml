@@ -8,6 +8,23 @@ jobs:
     runs-on: windows-latest
 
     steps:
+      - name: 🧹 Limpar diretórios antigos (PowerShell)
+        shell: pwsh
+        run: |
+          $root = "D:/a/sqlcipher"
+          if (Test-Path $root) {
+              Write-Host "🧽 Limpando diretório antigo $root..."
+              try {
+                  Remove-Item -Recurse -Force $root -ErrorAction Stop
+              } catch {
+                  Write-Host "⚠️ Remoção direta falhou, tentando com robocopy..."
+                  New-Item -ItemType Directory -Path "D:/a/empty" -Force | Out-Null
+                  robocopy "D:/a/empty" $root /MIR | Out-Null
+                  Remove-Item -Recurse -Force "D:/a/empty" -ErrorAction SilentlyContinue
+              }
+          }
+          Write-Host "✅ Diretório limpo com sucesso."
+
       - name: 🧰 Preparar ambiente MSYS2
         uses: msys2/setup-msys2@v2
         with:
@@ -23,23 +40,16 @@ jobs:
             mingw-w64-x86_64-zlib
             zip
 
-      - name: 📦 Limpar e clonar SQLCipher v4.11.0
+      - name: 📦 Clonar SQLCipher v4.11.0
         shell: msys2 {0}
         run: |
           set -euo pipefail
-          echo "=== Limpando diretório antigo e clonando SQLCipher ==="
+          echo "=== Clonando SQLCipher v4.11.0 ==="
           cd /d/a
-
-          echo "🧽 Limpando diretório antigo..."
-          rm -rf sqlcipher || true
-          mkdir -p sqlcipher
-
-          echo "⬇️ Clonando repositório..."
           git clone https://github.com/sqlcipher/sqlcipher.git
           cd sqlcipher
           git checkout v4.11.0 || git checkout c6e8461bfa0b7317dfd96278dd950b1eb6b21a1a
-
-          echo "✅ SQLCipher v4.11.0 clonado com sucesso."
+          echo "✅ Repositório clonado com sucesso."
           ls -lh . || true
 
       - name: 🔧 Compilar SQLCipher
@@ -80,7 +90,7 @@ jobs:
           cp sqlite3.h /d/a/sqlcipher/dist/sqlcipher.h || true
           cp sqlite3ext.h /d/a/sqlcipher/dist/sqlcipherext.h || true
 
-          # Dependências extras
+          # Copiar dependências do OpenSSL e Zlib
           cp /mingw64/bin/libcrypto-3-x64.dll /d/a/sqlcipher/dist/ || true
           cp /mingw64/bin/libssl-3-x64.dll /d/a/sqlcipher/dist/ || true
           cp /mingw64/bin/zlib1.dll /d/a/sqlcipher/dist/ || true
@@ -88,13 +98,13 @@ jobs:
           echo "✅ Binários e DLLs copiados para /d/a/sqlcipher/dist"
           ls -lh /d/a/sqlcipher/dist
 
-      - name: 🧪 Testar build
+      - name: 🧪 Testar SQLCipher compilado
         shell: msys2 {0}
         run: |
           cd /d/a/sqlcipher/dist
           echo "🔍 Testando SQLCipher..."
-          ./sqlcipher ":memory:" "PRAGMA cipher_version;" || echo "⚠️ Teste de versão falhou."
-          ./sqlcipher --version || true
+          ./sqlcipher --version || echo "⚠️ Não foi possível verificar versão."
+          ./sqlcipher ":memory:" "PRAGMA cipher_version;" || true
 
       - name: 🗜️ Compactar build
         shell: pwsh
@@ -102,13 +112,13 @@ jobs:
           $distPath = "D:/a/sqlcipher/dist"
           $zipPath = "D:/a/sqlcipher/sqlcipher-4.11.0-win64.zip"
           if (-Not (Test-Path $distPath)) {
-            Write-Error "❌ Diretório $distPath não encontrado!"
-            exit 1
+              Write-Error "❌ Diretório $distPath não encontrado!"
+              exit 1
           }
           Compress-Archive -Path "$distPath/*" -DestinationPath $zipPath -Force
           Write-Host "✅ ZIP criado em $zipPath"
 
-      - name: 📤 Upload do artefato
+      - name: 📤 Upload do artefato final
         uses: actions/upload-artifact@v4
         with:
           name: sqlcipher-4.11.0-win64
