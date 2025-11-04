@@ -14,6 +14,7 @@ jobs:
           install: >-
             git
             make
+            tcl
             mingw-w64-x86_64-gcc
             mingw-w64-x86_64-openssl
             mingw-w64-x86_64-zlib
@@ -41,3 +42,19 @@ jobs:
 
           echo "✅ Build concluído com sucesso!"
           ls -lh sqlcipher.exe libsqlcipher-0.dll
+
+      - name: 📦 Criar artefato ZIP
+        if: success()
+        shell: bash
+        run: |
+          mkdir -p output
+          cp sqlcipher/sqlcipher.exe sqlcipher/libsqlcipher-0.dll output/
+          cp sqlcipher/sqlite3.h sqlcipher/sqlite3ext.h output/ || true
+          zip -r SQLCipher-v4.11.0-win64.zip output
+        continue-on-error: true
+
+      - name: ⬆️ Publicar artefato
+        uses: actions/upload-artifact@v4
+        with:
+          name: SQLCipher-v4.11.0-win64
+          path: SQLCipher-v4.11.0-win64.zip
