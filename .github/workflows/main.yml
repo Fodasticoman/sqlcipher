@@ -25,7 +25,7 @@ jobs:
             mingw-w64-x86_64-zlib mingw-w64-x86_64-tcl zip
           echo "✅ Dependências instaladas."
 
-      # 🧬 Clonar SQLCipher v4.11.0 (com limpeza prévia)
+      # 🧬 Clonar SQLCipher v4.11.0
       - name: 🧬 Clonar SQLCipher (v4.11.0)
         shell: C:\msys64\usr\bin\bash.exe -l {0}
         run: |
@@ -81,7 +81,7 @@ jobs:
 
           echo "✅ Todos os binários e DLLs copiados para /d/a/sqlcipher/dist"
 
-      # 🧪 Testar execução básica (versão e inicialização)
+      # 🧪 Testar execução básica
       - name: 🧪 Testar binário SQLCipher
         shell: C:\msys64\usr\bin\bash.exe -l {0}
         run: |
