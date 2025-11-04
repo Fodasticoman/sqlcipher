@@ -1,91 +1,149 @@
-name: Build SQLCipher with OpenSSL (Windows)
+# .github/workflows/main.yml
+name: Build SQLCipher v4.11.0 (Windows, MSYS2/Mingw-w64)
 
 on:
   workflow_dispatch:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
 
 jobs:
   build:
+    name: Build (Windows / MSYS2 MINGW64)
     runs-on: windows-latest
 
     steps:
-      - name: 🚀 Iniciar
-        run: echo "Iniciando build SQLCipher (OpenSSL + MSYS2 no Windows)..."
-
-      - name: 📦 Checkout repositório
+      - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: ⚙️ Instalar MSYS2 e dependências
+      - name: Setup MSYS2 (MINGW64) and required packages
         uses: msys2/setup-msys2@v2
         with:
           update: true
-          install: >-
-            base-devel
+          install: >
+            mingw-w64-x86_64-toolchain
+            mingw-w64-x86_64-openssl
+            mingw-w64-x86_64-zlib
+            mingw-w64-x86_64-tcl
+            mingw-w64-x86_64-pkg-config
+            mingw-w64-x86_64-make
             autoconf
             automake
-            libtool
-            make
+            pkg-config
+            git
             tar
-            curl
-            unzip
-            mingw-w64-x86_64-gcc
-            mingw-w64-x86_64-openssl
-            mingw-w64-x86_64-pkg-config
-            tcl
-            mingw-w64-x86_64-tcl
+            gzip
+        env:
+          MSYS2_ARG_CONV_EXCL: '*'
 
-      - name: 📥 Baixar e extrair SQLCipher
+      - name: Verify MSYS2 / Mingw toolchain
         shell: msys2 {0}
+        run: |
+          echo "MSYSTEM=$MSYSTEM"
+          which gcc || true
+          gcc --version || true
+          which tclsh || true
+          tclsh --version || true
+
+      - name: Build SQLCipher v4.11.0 (configure, make, install)
+        # run inside MSYS2/MINGW64 shell so /mingw64 paths are available
+        shell: msys2 {0}
+        env:
+          TAG: v4.11.0
+          # ensure pkg-config finds mingw openssl/zlib
+          PKG_CONFIG_PATH: /mingw64/lib/pkgconfig
         run: |
           set -euo pipefail
-          TAG="v4.5.5"
-          echo "📦 Baixando SQLCipher versão $TAG..."
-          curl -L -o sqlcipher.tar.gz "https://github.com/sqlcipher/sqlcipher/archive/refs/tags/${TAG}.tar.gz"
 
-          echo "📂 Extraindo..."
-          mkdir -p sqlcipher-src
-          tar -xzf sqlcipher.tar.gz -C sqlcipher-src --strip-components=1 || true
+          echo "=== Build SQLCipher tag: $TAG ==="
 
-          if [ ! -d "sqlcipher-src" ] || [ -z "$(ls -A sqlcipher-src)" ]; then
-            echo "❌ Falha na extração. Tentando método alternativo..."
-            7z x sqlcipher.tar.gz -osqlcipher-src > /dev/null
+          # workspace is mounted under /d/ on GitHub Windows runners when using msys2 shell.
+          WORKDIR="$(pwd)"
+          echo "WORKDIR = $WORKDIR"
+
+          # Clean any old checkout
+          rm -rf sqlcipher || true
+
+          # Clone exact tag (depth 1 helps speed)
+          git clone --depth 1 --branch "$TAG" https://github.com/sqlcipher/sqlcipher.git sqlcipher
+          cd sqlcipher
+
+          echo "=> current commit: $(git rev-parse --short HEAD || true)"
+          echo "=> listing top-level files:"
+          ls -la
+
+          # Prepare install prefix inside repo (will be accessible)
+          INSTALL_DIR="$(pwd)/build/install"
+          mkdir -p "$INSTALL_DIR"
+
+          # Compiler/linker flags (adjust includes/libs for mingw64)
+          export CFLAGS="-O2 -DSQLITE_HAS_CODEC -DSQLCIPHER_CRYPTO_OPENSSL \
+            -DSQLITE_EXTRA_INIT=sqlcipher_extra_init \
+            -DSQLITE_EXTRA_SHUTDOWN=sqlcipher_extra_shutdown \
+            -I/mingw64/include"
+          export LDFLAGS="-L/mingw64/lib -lssl -lcrypto -lz"
+
+          echo "CFLAGS: $CFLAGS"
+          echo "LDFLAGS: $LDFLAGS"
+
+          # Ensure tclsh exists (used by the build to produce amalgamation files)
+          if ! command -v tclsh >/dev/null 2>&1; then
+            echo "ERROR: tclsh not found; ensure mingw-w64-x86_64-tcl was installed"
+            exit 1
           fi
 
-          echo "✅ Extração concluída."
-          mv sqlcipher-src sqlcipher
+          echo "Running ./configure --enable-shared --enable-static --disable-tcl ..."
+          ./configure --prefix="$INSTALL_DIR" \
+            --enable-shared --enable-static --disable-tcl \
+            CFLAGS="$CFLAGS" LDFLAGS="$LDFLAGS" \
+            || { echo "⚠️ configure failed; dumping head of config.log"; [ -f config.log ] && sed -n '1,200p' config.log || true; exit 1; }
 
-      - name: 🧱 Configurar build (OpenSSL)
-        shell: msys2 {0}
-        working-directory: sqlcipher
+          echo "Running make (parallel)..."
+          make -j"$(nproc)" || { echo "❌ make failed"; exit 1; }
+
+          echo "Running make install..."
+          make install || { echo "❌ make install failed"; exit 1; }
+
+          echo "Collecting artifacts into build-output/"
+          mkdir -p "$GITHUB_WORKSPACE/build-output"
+
+          # CLI binary: prefer install/bin, fallback to top-level build artifacts
+          if [ -f "$INSTALL_DIR/bin/sqlcipher.exe" ]; then
+            cp "$INSTALL_DIR/bin/sqlcipher.exe" "$GITHUB_WORKSPACE/build-output/" || true
+          elif [ -f "$INSTALL_DIR/bin/sqlite3.exe" ]; then
+            cp "$INSTALL_DIR/bin/sqlite3.exe" "$GITHUB_WORKSPACE/build-output/" || true
+          elif [ -f "sqlite3.exe" ]; then
+            cp sqlite3.exe "$GITHUB_WORKSPACE/build-output/" || true
+          elif [ -f "sqlcipher.exe" ]; then
+            cp sqlcipher.exe "$GITHUB_WORKSPACE/build-output/" || true
+          fi
+
+          # DLL/shared lib: look in install/lib or .libs or top-level
+          if [ -f "$INSTALL_DIR/lib/libsqlcipher-0.dll" ]; then
+            cp "$INSTALL_DIR/lib/libsqlcipher-0.dll" "$GITHUB_WORKSPACE/build-output/" || true
+          elif [ -f ".libs/libsqlcipher-0.dll" ]; then
+            cp .libs/libsqlcipher-0.dll "$GITHUB_WORKSPACE/build-output/" || true
+          elif ls . | grep -E "libsqlcipher-.*\\.dll" >/dev/null 2>&1; then
+            cp libsqlcipher-*.dll "$GITHUB_WORKSPACE/build-output/" || true
+          fi
+
+          echo "Artifacts produced:"
+          ls -la "$GITHUB_WORKSPACE/build-output" || true
+
+      - name: Verify artifacts exist
+        shell: bash
         run: |
-          echo "🛠️ Executando autoconf..."
-          ./configure \
-            --enable-tempstore=yes \
-            --with-crypto-lib=openssl \
-            CFLAGS="-DSQLITE_HAS_CODEC -DSQLCIPHER_CRYPTO_OPENSSL" \
-            LDFLAGS="-lcrypto -lssl"
-          echo "✅ Configuração concluída."
+          echo "Contents of build-output:"
+          ls -la build-output || true
+          if [ -z "$(ls -A build-output 2>/dev/null)" ]; then
+            echo "❌ No artifacts in build-output — build likely failed earlier."
+            exit 1
+          fi
 
-      - name: ⚙️ Compilar SQLCipher
-        shell: msys2 {0}
-        working-directory: sqlcipher
-        run: |
-          echo "🔧 Compilando..."
-          make -j$(nproc)
-          echo "✅ Compilação finalizada."
-
-      - name: 📂 Organizar artefatos
-        shell: msys2 {0}
-        run: |
-          mkdir -p build-output
-          find sqlcipher -type f \( -iname "*.exe" -o -iname "*.dll" -o -iname "sqlcipher" \) -exec cp {} build-output/ \;
-          echo "📦 Artefatos gerados:"
-          ls -lh build-output || echo "⚠️ Nenhum artefato encontrado!"
-
-      - name: 📤 Publicar artefatos
+      - name: Upload build artifacts
         uses: actions/upload-artifact@v4
         with:
           name: sqlcipher-windows
-          path: build-output/
+          path: build-output/**
 
-      - name: ✅ Finalizar
-        run: echo "🏁 Build completo! Artefatos disponíveis em 'Artifacts'."
