@@ -8,38 +8,37 @@ jobs:
     runs-on: windows-latest
 
     steps:
-      # 🧹 Instalar MSYS2
-      - name: 🧹 Instalar MSYS2
-        run: |
-          choco install -y msys2
-          echo "✅ MSYS2 instalado com sucesso."
+      # 🧱 Configurar ambiente MSYS2 corretamente
+      - name: 🧱 Setup MSYS2
+        uses: msys2/setup-msys2@v2
+        with:
+          update: true
+          install: >
+            git
+            make
+            automake
+            libtool
+            autoconf
+            mingw-w64-x86_64-gcc
+            mingw-w64-x86_64-openssl
+            mingw-w64-x86_64-zlib
+            zip
 
-      # ⚙️ Atualizar pacotes e instalar dependências
-      - name: ⚙️ Atualizar pacotes e instalar dependências
-        shell: C:\msys64\usr\bin\bash.exe -l {0}
+      # 🧬 Clonar SQLCipher
+      - name: 🧬 Clonar SQLCipher v4.11.0
+        shell: msys2 {0}
         run: |
           set -e
-          pacman -Syu --noconfirm
-          pacman -S --noconfirm git make automake libtool autoconf \
-            mingw-w64-x86_64-gcc mingw-w64-x86_64-openssl \
-            mingw-w64-x86_64-zlib mingw-w64-x86_64-tcl zip
-          echo "✅ Dependências instaladas."
-
-      # 🧬 Clonar SQLCipher v4.11.0
-      - name: 🧬 Clonar SQLCipher (v4.11.0)
-        shell: C:\msys64\usr\bin\bash.exe -l {0}
-        run: |
-          set -e
-          cd /d/a/
+          cd /d/a
           rm -rf sqlcipher || true
           git clone https://github.com/sqlcipher/sqlcipher.git
           cd sqlcipher
           git checkout v4.11.0 || git checkout c6e8461bfa0b7317dfd96278dd950b1eb6b21a1a
           echo "✅ SQLCipher v4.11.0 clonado."
 
-      # 🏗️ Gerar configure e compilar SQLCipher
-      - name: 🏗️ Configurar e compilar SQLCipher
-        shell: C:\msys64\usr\bin\bash.exe -l {0}
+      # 🏗️ Compilar SQLCipher
+      - name: 🏗️ Compilar SQLCipher com OpenSSL + zlib
+        shell: msys2 {0}
         run: |
           set -e
           cd /d/a/sqlcipher/sqlcipher
@@ -55,43 +54,35 @@ jobs:
 
           echo "🧩 Compilando..."
           make -j$(nproc)
-
-          echo "✅ Compilação concluída com sucesso."
-          ls -lh . || true
-
-      # 📦 Copiar binários e dependências
-      - name: 📦 Copiar binários e dependências
-        shell: C:\msys64\usr\bin\bash.exe -l {0}
-        run: |
-          set -e
-          cd /d/a/sqlcipher/sqlcipher
+          echo "✅ Compilação concluída."
 
           mkdir -p /d/a/sqlcipher/dist
 
-          # Copiar binários principais
           cp sqlcipher.exe /d/a/sqlcipher/dist/ 2>/dev/null || cp sqlite3.exe /d/a/sqlcipher/dist/sqlcipher.exe
           cp .libs/libsqlcipher-0.dll /d/a/sqlcipher/dist/ 2>/dev/null || true
           cp sqlcipher.h /d/a/sqlcipher/dist/ || cp sqlite3.h /d/a/sqlcipher/dist/sqlcipher.h
           cp sqlcipherext.h /d/a/sqlcipher/dist/ || cp sqlite3ext.h /d/a/sqlcipher/dist/sqlcipherext.h
 
-          # Copiar dependências essenciais
+          # 🔗 Copiar dependências (OpenSSL + zlib)
           cp /mingw64/bin/libcrypto-3-x64.dll /d/a/sqlcipher/dist/ || true
           cp /mingw64/bin/libssl-3-x64.dll /d/a/sqlcipher/dist/ || true
           cp /mingw64/bin/zlib1.dll /d/a/sqlcipher/dist/ || true
 
-          echo "✅ Todos os binários e DLLs copiados para /d/a/sqlcipher/dist"
+          echo "✅ Binários e DLLs prontos em /d/a/sqlcipher/dist"
+          ls -lh /d/a/sqlcipher/dist
 
-      # 🧪 Testar execução básica
-      - name: 🧪 Testar binário SQLCipher
-        shell: C:\msys64\usr\bin\bash.exe -l {0}
+      # 🧪 Teste básico de execução
+      - name: 🧪 Testar SQLCipher
+        shell: msys2 {0}
         run: |
-          set -e
           cd /d/a/sqlcipher/dist
-          ./sqlcipher -version || ./sqlcipher --version || echo "⚠️ Não foi possível exibir versão."
-          echo "PRAGMA key='test123'; CREATE TABLE demo(x); INSERT INTO demo VALUES(42); SELECT * FROM demo;" | ./sqlcipher test.db || echo "⚠️ Teste SQLCipher simples falhou (mas binário gerado)."
+          ./sqlcipher -version || ./sqlcipher --version || echo "⚠️ Falha ao exibir versão"
+          echo "PRAGMA key='abc'; CREATE TABLE demo(x); INSERT INTO demo VALUES(123); SELECT * FROM demo;" | ./sqlcipher test.db
+          echo "✅ Teste básico executado."
 
-      # 🗜️ Compactar resultado final
-      - name: 🗜️ Compactar resultado final
+      # 🗜️ Compactar resultado
+      - name: 🗜️ Compactar build final
+        shell: pwsh
         run: |
           $distPath = "D:/a/sqlcipher/dist"
           if (-Not (Test-Path $distPath)) {
@@ -99,9 +90,9 @@ jobs:
             exit 1
           }
           Compress-Archive -Path "$distPath/*" -DestinationPath "D:/a/sqlcipher/sqlcipher-4.11.0-win64.zip" -Force
-          echo "✅ Arquivo ZIP final criado com sucesso."
+          echo "✅ ZIP criado com sucesso."
 
-      # 📤 Publicar artefato final único
+      # 📤 Publicar artefato
       - name: 📤 Publicar artefato final
         uses: actions/upload-artifact@v4
         with:
