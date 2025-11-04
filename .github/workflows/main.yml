@@ -19,11 +19,16 @@ jobs:
             } catch {
               Write-Host "⚠️ Remoção direta falhou, tentando com robocopy..."
               New-Item -ItemType Directory -Path "D:/a/empty" -Force | Out-Null
-              robocopy "D:/a/empty" $root /MIR | Out-Null
+              $result = robocopy "D:/a/empty" $root /MIR | Out-Null
+              if ($LASTEXITCODE -ge 8) {
+                Write-Error "❌ robocopy falhou com código $LASTEXITCODE"
+                exit 1
+              }
               Remove-Item -Recurse -Force "D:/a/empty" -ErrorAction SilentlyContinue
             }
           }
           Write-Host "✅ Diretório limpo com sucesso."
+          exit 0
 
       - name: 🧰 Preparar ambiente MSYS2
         uses: msys2/setup-msys2@v2
