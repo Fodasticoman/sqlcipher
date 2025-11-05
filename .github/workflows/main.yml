@@ -11,7 +11,7 @@ jobs:
     runs-on: windows-latest
 
     steps:
-      - name: 🧰 Checkout do repositório
+      - name: 🧰 Checkout
         uses: actions/checkout@v4
 
       - name: 🧱 Configurar ambiente MSYS2
@@ -51,11 +51,12 @@ jobs:
           fi
 
           echo "⚙️ Configurando build..."
-          export CFLAGS="-O2"
-          export CPPFLAGS="-DSQLITE_HAS_CODEC -DSQLCIPHER_CRYPTO_OPENSSL -DSQLITE_TEMP_STORE=2 -I/mingw64/include"
-          export LDFLAGS="-L/mingw64/lib -lssl -lcrypto -lz"
+          # Usamos aspas simples no export e removemos flags duplicadas
+          export CFLAGS='-O2'
+          export CPPFLAGS='-DSQLITE_HAS_CODEC -DSQLCIPHER_CRYPTO_OPENSSL -DSQLITE_TEMP_STORE=2 -I/mingw64/include'
+          export LDFLAGS='-L/mingw64/lib -lssl -lcrypto -lz'
 
-          ./configure --enable-shared --enable-static --disable-tcl
+          ./configure --enable-shared --enable-static --disable-tcl || (cat config.log && false)
 
           echo "🧩 Compilando..."
           make -j$(nproc)
