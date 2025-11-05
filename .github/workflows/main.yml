@@ -19,6 +19,7 @@ jobs:
             mingw-w64-x86_64-openssl
             mingw-w64-x86_64-zlib
             zip
+            p7zip
             git
 
       - name: 🧩 Build SQLCipher
@@ -40,7 +41,7 @@ jobs:
           export CPPFLAGS="-DSQLITE_HAS_CODEC -DSQLCIPHER_CRYPTO_OPENSSL -DSQLITE_TEMP_STORE=2 -D_WIN32_WINNT=0x0601 -DSQLITE_EXTRA_INIT=sqlcipher_extra_init -DSQLITE_EXTRA_SHUTDOWN=sqlcipher_extra_shutdown -I/mingw64/include"
           export LDFLAGS="-L/mingw64/lib -lssl -lcrypto -lz -static-libgcc -static-libstdc++"
 
-          # Forçar valores de verificação de funções não suportadas no Windows
+          # Forçar compatibilidade com Windows
           export ac_cv_func_pread=no
           export ac_cv_func_pwrite=no
           export ac_cv_func_fdatasync=no
@@ -53,7 +54,7 @@ jobs:
           export ac_cv_func_pread64=no
           export ac_cv_func_pwrite64=no
 
-          ./configure --enable-shared --enable-static --disable-tcl || (cat config.log && false)
+          ./configure --enable-shared --enable-static --disable-tcl --disable-load-extension || (cat config.log && false)
 
           echo "🧱 Compilando..."
           make -j$(nproc)
@@ -62,10 +63,13 @@ jobs:
           mkdir -p ../../output
 
           echo "📦 Copiando artefatos..."
-          cp -f .libs/libsqlcipher-0.dll ../../output/ || true
-          cp -f .libs/libsqlcipher.a ../../output/ || true
-          cp -f sqlcipher.exe ../../output/ || true
+          # Ajuste de nomes (SQLCipher usa libsqlite3 e sqlite3.exe)
+          cp -f .libs/libsqlite3-0.dll ../../output/libsqlcipher-0.dll || true
+          cp -f .libs/libsqlite3.a ../../output/libsqlcipher.a || true
+          cp -f sqlite3.exe ../../output/sqlcipher.exe || true
           cp -f sqlite3.h ../../output/sqlite.h || true
+
+          # Dependências
           cp -f /mingw64/bin/libssl-3-x64.dll ../../output/ || true
           cp -f /mingw64/bin/libcrypto-3-x64.dll ../../output/ || true
           cp -f /mingw64/bin/zlib1.dll ../../output/ || true
