@@ -1,7 +1,6 @@
-name: Build SQLCipher for Windows (MSYS2)
+name: Build SQLCipher (Windows)
 
 on:
-  push:
   workflow_dispatch:
 
 jobs:
@@ -9,7 +8,7 @@ jobs:
     runs-on: windows-latest
 
     steps:
-      - name: 🧰 Instalar dependências
+      - name: 🧰 Configurando MSYS2
         uses: msys2/setup-msys2@v2
         with:
           update: true
@@ -18,11 +17,11 @@ jobs:
             mingw-w64-x86_64-toolchain
             mingw-w64-x86_64-openssl
             mingw-w64-x86_64-zlib
-            p7zip
-            zip
             wget
+            zip
+            p7zip
 
-      - name: 🧩 Baixar e compilar SQLCipher
+      - name: 🧱 Compilando SQLCipher
         shell: msys2 {0}
         run: |
           set -euo pipefail
@@ -39,7 +38,7 @@ jobs:
 
           echo "⚙️ Configurando build..."
           export CFLAGS="-O2 -D_FILE_OFFSET_BITS=64"
-          export CPPFLAGS="-DSQLITE_HAS_CODEC -DSQLCIPHER_CRYPTO_OPENSSL -DSQLITE_TEMP_STORE=2 -D_WIN32_WINNT=0x0601 -I/mingw64/include"
+          export CPPFLAGS="-DSQLITE_HAS_CODEC -DSQLCIPHER_CRYPTO_OPENSSL -DSQLITE_TEMP_STORE=2 -DSQLITE_EXTRA_INIT=sqlcipher_extra_init -DSQLITE_EXTRA_SHUTDOWN=sqlcipher_extra_shutdown -D_WIN32_WINNT=0x0601 -I/mingw64/include"
           export LDFLAGS="-L/mingw64/lib -lssl -lcrypto -lz -static-libgcc -static-libstdc++"
 
           ./configure --enable-shared --enable-static --disable-tcl --disable-load-extension
@@ -51,9 +50,14 @@ jobs:
           mkdir -p ../../output
 
           echo "📦 Copiando artefatos..."
-          cp -f .libs/libsqlcipher-0.dll ../../output/ || true
+          if [ -f .libs/libsqlcipher-0.dll ]; then
+            cp -f .libs/libsqlcipher-0.dll ../../output/
+          elif [ -f .libs/libsqlite3-0.dll ]; then
+            cp -f .libs/libsqlite3-0.dll ../../output/libsqlcipher-0.dll
+          fi
+
           cp -f .libs/libsqlcipher.a ../../output/ || true
-          cp -f sqlcipher.exe ../../output/ || true
+          cp -f sqlcipher.exe ../../output/ || cp -f sqlite3.exe ../../output/sqlcipher.exe || true
           cp -f sqlite3.h ../../output/sqlite.h || true
           cp -f /mingw64/bin/libssl-3-x64.dll ../../output/ || true
           cp -f /mingw64/bin/libcrypto-3-x64.dll ../../output/ || true
@@ -63,7 +67,7 @@ jobs:
           cd ../../
           7z a sqlcipher-win64.zip ./output/*
 
-      - name: ⬆️ Upload Artefatos
+      - name: 📤 Enviando artefatos
         uses: actions/upload-artifact@v4
         with:
           name: sqlcipher-win64
