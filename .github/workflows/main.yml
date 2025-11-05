@@ -8,7 +8,7 @@ jobs:
     runs-on: windows-latest
 
     steps:
-      - name: 🔽 Checkout repositório
+      - name: 🔽 Checkout do repositório
         uses: actions/checkout@v4
 
       - name: 🧰 Instalar MSYS2 e dependências
@@ -16,6 +16,7 @@ jobs:
         with:
           update: true
           install: >-
+            git
             base-devel
             mingw-w64-x86_64-gcc
             mingw-w64-x86_64-openssl
@@ -25,6 +26,7 @@ jobs:
             libtool
             make
             pkg-config
+            p7zip
 
       - name: ⚙️ Compilar SQLCipher (Windows x64)
         shell: msys2 {0}
@@ -52,16 +54,19 @@ jobs:
           echo "🧩 Compilando..."
           make -j$(nproc)
 
-          echo "✅ Build concluído."
+          echo "✅ Build concluído com sucesso."
           mkdir -p ../../output
+
+          echo "📦 Copiando artefatos..."
           cp .libs/libsqlcipher-0.dll ../../output/ || true
+          cp .libs/libsqlcipher.a ../../output/ || true
           cp sqlcipher.exe ../../output/ || true
+          cp sqlite3.h ../../output/sqlite.h || true
           cp /mingw64/bin/libssl-3-x64.dll ../../output/ || true
           cp /mingw64/bin/libcrypto-3-x64.dll ../../output/ || true
           cp /mingw64/bin/zlib1.dll ../../output/ || true
-          cp sqlite3.h ../../output/sqlite.h || true
 
-          echo "📦 Empacotando..."
+          echo "🗜️ Compactando..."
           cd ../../
           7z a sqlcipher-win64.zip ./output/*
 
