@@ -1,7 +1,6 @@
-name: Build SQLCipher for Windows (MSYS2)
+name: Build SQLCipher for Windows
 
 on:
-  push:
   workflow_dispatch:
 
 jobs:
@@ -9,39 +8,47 @@ jobs:
     runs-on: windows-latest
 
     steps:
-      - name: 🧰 Instalar dependências
+      - name: 🧹 Limpar workspace
+        run: Remove-Item * -Recurse -Force -ErrorAction SilentlyContinue
+
+      - name: 🏗️ Configurar MSYS2
         uses: msys2/setup-msys2@v2
         with:
           update: true
-          install: >
+          install: >-
             base-devel
-            mingw-w64-x86_64-toolchain
+            mingw-w64-x86_64-gcc
             mingw-w64-x86_64-openssl
             mingw-w64-x86_64-zlib
-            p7zip
-            zip
+            mingw-w64-x86_64-pkg-config
             git
+            autoconf
+            automake
+            libtool
+            make
+            zip
+            p7zip
 
-      - name: 🧩 Compilar SQLCipher
+      - name: ⚙️ Compilar SQLCipher
         shell: msys2 {0}
         run: |
           set -euo pipefail
           export MSYS_NO_PATHCONV=1
-
+          
           echo "📁 Criando diretórios..."
           mkdir -p build_sqlcipher
           cd build_sqlcipher
-
+          
           echo "⬇️ Clonando SQLCipher..."
           git clone --depth 1 https://github.com/sqlcipher/sqlcipher.git
           cd sqlcipher
-
+          
           echo "⚙️ Configurando build..."
           export CFLAGS="-O2 -D_FILE_OFFSET_BITS=64"
           export CPPFLAGS="-DSQLITE_HAS_CODEC -DSQLCIPHER_CRYPTO_OPENSSL -DSQLITE_TEMP_STORE=2 -D_WIN32_WINNT=0x0601 -I/mingw64/include"
           export LDFLAGS="-L/mingw64/lib -lssl -lcrypto -lz -static-libgcc -static-libstdc++"
-
-          # Forçar compatibilidade com Windows
+          
+          # Forçar valores para evitar falhas de detecção no Windows
           export ac_cv_func_pread=no
           export ac_cv_func_pwrite=no
           export ac_cv_func_fdatasync=no
@@ -53,34 +60,40 @@ jobs:
           export ac_cv_func_strchrnul=no
           export ac_cv_func_pread64=no
           export ac_cv_func_pwrite64=no
-
-          ./configure --enable-shared --enable-static --disable-tcl --disable-load-extension || (cat config.log && false)
-
+          
+          ./configure --enable-shared --enable-static --disable-tcl || (cat config.log && false)
+          
           echo "🧱 Compilando..."
           make -j$(nproc)
-
+          
           echo "✅ Build concluído com sucesso."
           mkdir -p ../../output
 
           echo "📦 Copiando artefatos..."
-          # SQLCipher moderno gera libsqlite3-0.dll -> renomeamos
+          # Renomear libsqlite3-0.dll -> libsqlcipher-0.dll
           if [ -f .libs/libsqlite3-0.dll ]; then
             cp -f .libs/libsqlite3-0.dll ../../output/libsqlcipher-0.dll
+          elif [ -f .libs/libsqlcipher-0.dll ]; then
+            cp -f .libs/libsqlcipher-0.dll ../../output/
+          else
+            echo "⚠️ Nenhum arquivo libsqlcipher-0.dll encontrado."
           fi
+
+          # Copiar demais arquivos
           cp -f .libs/libsqlite3.a ../../output/libsqlcipher.a || true
           cp -f sqlite3.exe ../../output/sqlcipher.exe || true
           cp -f sqlite3.h ../../output/sqlite.h || true
 
-          # Dependências no mesmo diretório
-          cp -f /mingw64/bin/libssl-3-x64.dll ../../output/
-          cp -f /mingw64/bin/libcrypto-3-x64.dll ../../output/
-          cp -f /mingw64/bin/zlib1.dll ../../output/
-
+          # Dependências externas
+          cp -f /mingw64/bin/libssl-3-x64.dll ../../output/ || true
+          cp -f /mingw64/bin/libcrypto-3-x64.dll ../../output/ || true
+          cp -f /mingw64/bin/zlib1.dll ../../output/ || true
+          
           echo "🗜️ Compactando artefatos..."
           cd ../../
           7z a sqlcipher-win64.zip ./output/*
 
-      - name: ⬆️ Upload Artefatos
+      - name: ⬆️ Publicar artefato
         uses: actions/upload-artifact@v4
         with:
           name: sqlcipher-win64
