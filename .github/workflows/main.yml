@@ -1,60 +1,54 @@
-name: Build SQLCipher (Windows)
+name: Build SQLCipher for Windows (MSYS2)
 
 on:
-  workflow_dispatch:
   push:
-    branches:
-      - main
+  workflow_dispatch:
 
 jobs:
-  build-sqlcipher:
+  build:
     runs-on: windows-latest
 
     steps:
-      - name: 🧰 Checkout
+      - name: 📦 Checkout
         uses: actions/checkout@v4
 
-      - name: 🧱 Configurar ambiente MSYS2
+      - name: ⚙️ Setup MSYS2
         uses: msys2/setup-msys2@v2
         with:
+          msystem: MINGW64
           update: true
           install: >-
-            base-devel
-            mingw-w64-x86_64-gcc
-            mingw-w64-x86_64-openssl
-            mingw-w64-x86_64-zlib
-            mingw-w64-x86_64-pkg-config
+            git
+            make
             autoconf
             automake
             libtool
-            make
-            zip
-            git
+            mingw-w64-x86_64-openssl
+            mingw-w64-x86_64-zlib
+            mingw-w64-x86_64-gcc
+            mingw-w64-x86_64-binutils
+            mingw-w64-x86_64-7zip
 
-      - name: ⚙️ Compilar SQLCipher
+      - name: 🏗️ Build SQLCipher
         shell: msys2 {0}
         run: |
           set -euo pipefail
-
+          
           echo "📁 Criando diretórios..."
           mkdir -p build_sqlcipher
           cd build_sqlcipher
-
+          
           echo "⬇️ Clonando SQLCipher..."
           git clone --depth 1 https://github.com/sqlcipher/sqlcipher.git
           cd sqlcipher
-
-          echo "🔍 Verificando script configure..."
-          if [ ! -f configure ]; then
-            echo "⚠️ Script configure não encontrado. Gerando com autoreconf..."
-            autoreconf -fi
-          fi
+          
+          echo "🔍 Preparando script configure..."
+          autoreconf -fi || true
 
           echo "⚙️ Configurando build..."
-          # Usamos aspas simples no export e removemos flags duplicadas
-          export CFLAGS='-O2'
-          export CPPFLAGS='-DSQLITE_HAS_CODEC -DSQLCIPHER_CRYPTO_OPENSSL -DSQLITE_TEMP_STORE=2 -I/mingw64/include'
-          export LDFLAGS='-L/mingw64/lib -lssl -lcrypto -lz'
+          export CFLAGS="-O2 -D_FILE_OFFSET_BITS=64"
+          export CPPFLAGS="-DSQLITE_HAS_CODEC -DSQLCIPHER_CRYPTO_OPENSSL -DSQLITE_TEMP_STORE=2 -D_WIN32_WINNT=0x0601 -I/mingw64/include"
+          export LDFLAGS="-L/mingw64/lib -lssl -lcrypto -lz -static-libgcc -static-libstdc++"
 
           ./configure --enable-shared --enable-static --disable-tcl || (cat config.log && false)
 
@@ -77,7 +71,7 @@ jobs:
           cd ../../
           7z a sqlcipher-win64.zip ./output/*
 
-      - name: 📤 Upload dos artefatos
+      - name: 📤 Upload artifacts
         uses: actions/upload-artifact@v4
         with:
           name: sqlcipher-win64
