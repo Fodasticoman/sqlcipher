@@ -1,4 +1,4 @@
-name: Build SQLCipher for Windows (Stable)
+name: Build SQLCipher v4.11.0 for Windows
 
 on:
   workflow_dispatch:
@@ -18,10 +18,8 @@ jobs:
           mingw-w64-x86_64-toolchain
           mingw-w64-x86_64-openssl
           mingw-w64-x86_64-zlib
-          autoconf
-          automake
-          libtool
           git
+          make
 
     - name: 🧹 Preparar ambiente limpo
       shell: pwsh
@@ -49,44 +47,52 @@ jobs:
         git clone https://github.com/sqlcipher/sqlcipher.git
         cd sqlcipher
         git checkout v4.11.0 || git checkout c6e8461bfa0b7317dfd96278dd950b1eb6b21a1a
-        echo "✅ SQLCipher v4.11.0 clonado."
+        echo "✅ SQLCipher v4.11.0 clonado com sucesso."
+        ls -lh
 
     - name: 🏗️ Compilar SQLCipher
       shell: msys2 {0}
       run: |
         set -euo pipefail
         cd /d/a/build_sqlcipher/sqlcipher
-        echo "⚙️ Configurando..."
-        autoreconf -fi
 
+        echo "⚙️ Executando configure..."
         export CFLAGS="-O2 -DSQLITE_HAS_CODEC -DSQLCIPHER_CRYPTO_OPENSSL -DSQLITE_TEMP_STORE=2 -I/mingw64/include"
         export LDFLAGS="-L/mingw64/lib -lssl -lcrypto -lz"
 
         ./configure --enable-shared --enable-static --disable-tcl
         echo "🧩 Compilando..."
         make -j$(nproc)
-        echo "✅ Build concluído."
+        echo "✅ Build concluído com sucesso."
 
         strip sqlcipher.exe || true
         strip .libs/libsqlcipher-0.dll || true
 
-    - name: 📦 Copiar DLLs e executável
+    - name: 📦 Copiar binários e dependências
       shell: pwsh
       run: |
         $src = "D:\\a\\build_sqlcipher\\sqlcipher"
         $out = "D:\\a\\artifacts"
         New-Item -ItemType Directory -Force -Path $out | Out-Null
 
-        Copy-Item "$src\\sqlcipher.exe" $out
-        Copy-Item "$src\\.libs\\libsqlcipher-0.dll" $out
-        Copy-Item "C:\\msys64\\mingw64\\bin\\libcrypto-3-x64.dll" $out
-        Copy-Item "C:\\msys64\\mingw64\\bin\\libssl-3-x64.dll" $out
-        Copy-Item "C:\\msys64\\mingw64\\bin\\zlib1.dll" $out
+        Copy-Item "$src\\sqlcipher.exe" $out -ErrorAction SilentlyContinue
+        Copy-Item "$src\\.libs\\libsqlcipher-0.dll" $out -ErrorAction SilentlyContinue
+        Copy-Item "C:\\msys64\\mingw64\\bin\\libcrypto-3-x64.dll" $out -ErrorAction SilentlyContinue
+        Copy-Item "C:\\msys64\\mingw64\\bin\\libssl-3-x64.dll" $out -ErrorAction SilentlyContinue
+        Copy-Item "C:\\msys64\\mingw64\\bin\\zlib1.dll" $out -ErrorAction SilentlyContinue
 
-        Write-Host "✅ Todos os binários copiados para $out"
+        Write-Host "✅ Binários copiados para $out"
+        Get-ChildItem $out
 
-    - name: 🚀 Upload de artefatos
+    - name: 🗜️ Compactar artefato final
+      shell: pwsh
+      run: |
+        $zip = "D:\\a\\sqlcipher-win64.zip"
+        Compress-Archive -Path "D:\\a\\artifacts\\*" -DestinationPath $zip -Force
+        Write-Host "✅ Arquivo compactado: $zip"
+
+    - name: 🚀 Upload de artefato
       uses: actions/upload-artifact@v4
       with:
-        name: sqlcipher-windows
-        path: D:\a\artifacts
+        name: sqlcipher-win64
+        path: D:\a\sqlcipher-win64.zip
