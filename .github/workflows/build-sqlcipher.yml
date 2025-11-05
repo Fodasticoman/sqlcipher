@@ -1,102 +1,92 @@
-name: SQLCipher for Windows
+name: Build SQLCipher (Release with DLL for Unity)
 
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - main
 
 jobs:
   build:
-    name: 🧱 Build SQLCipher (Windows)
     runs-on: windows-latest
 
     steps:
-      - name: 📥 Checkout repository
-        uses: actions/checkout@v4
-
-      - name: 🧰 Instalar MSYS2 e dependências
+      - name: 🧰 Configurar MSYS2
         uses: msys2/setup-msys2@v2
         with:
+          msystem: MINGW64
           update: true
-          install: >-
+          install: >
             base-devel
-            mingw-w64-x86_64-gcc
+            mingw-w64-x86_64-toolchain
             mingw-w64-x86_64-openssl
             mingw-w64-x86_64-zlib
-            mingw-w64-x86_64-toolchain
+            git
             autoconf
             automake
             libtool
             make
-            git
-            p7zip
-          msystem: MINGW64
+            7zip
 
-      - name: ⚙️ Compilar SQLCipher
+      - name: 🧱 Compilar SQLCipher (Release)
         shell: msys2 {0}
         run: |
           set -euo pipefail
           export MSYS_NO_PATHCONV=1
 
           echo "📁 Criando diretórios..."
-          mkdir -p build_sqlcipher && cd build_sqlcipher
+          mkdir -p build_sqlcipher
+          cd build_sqlcipher
 
           echo "⬇️ Clonando SQLCipher..."
           git clone --depth 1 https://github.com/sqlcipher/sqlcipher.git
           cd sqlcipher
 
-          echo "⚙️ Configurando build..."
-          export CFLAGS="-O2 -D_FILE_OFFSET_BITS=64"
-          export CPPFLAGS="-DSQLITE_HAS_CODEC -DSQLCIPHER_CRYPTO_OPENSSL -DSQLITE_TEMP_STORE=2 -DSQLITE_EXTRA_INIT=sqlcipher_extra_init -DSQLITE_EXTRA_SHUTDOWN=sqlcipher_extra_shutdown -D_WIN32_WINNT=0x0601 -I/mingw64/include"
+          echo "🔧 Preparando configuração..."
+          autoreconf -fi || true
+
+          echo "⚙️ Configurando build (modo Release)..."
+          export CFLAGS="-O3 -DNDEBUG -D_FILE_OFFSET_BITS=64"
+          export CPPFLAGS="-DSQLITE_HAS_CODEC -DSQLCIPHER_CRYPTO_OPENSSL -DSQLITE_TEMP_STORE=2 -D_WIN32_WINNT=0x0601 -I/mingw64/include"
           export LDFLAGS="-L/mingw64/lib -lssl -lcrypto -lz -static-libgcc -static-libstdc++"
 
           ./configure --enable-shared --enable-static --disable-tcl --disable-load-extension
 
-          echo "🧱 Compilando..."
+          echo "🧩 Compilando..."
           make -j$(nproc)
 
-          echo "✅ Build concluído. Preparando saída..."
+          echo "✅ Build concluído. Preparando artefatos..."
           mkdir -p ../../output
 
-          echo "📦 Copiando artefatos..."
-          # DLL principal
-          if [ -f libsqlite3-0.dll ]; then
-            cp -f libsqlite3-0.dll ../../output/libsqlcipher-0.dll
-          elif [ -f .libs/libsqlite3-0.dll ]; then
+          # Copiar DLL principal
+          if [ -f .libs/libsqlite3-0.dll ]; then
             cp -f .libs/libsqlite3-0.dll ../../output/libsqlcipher-0.dll
-          elif [ -f sqlite3.dll ]; then
-            cp -f sqlite3.dll ../../output/libsqlcipher-0.dll
+          elif [ -f .libs/libsqlcipher-0.dll ]; then
+            cp -f .libs/libsqlcipher-0.dll ../../output/libsqlcipher-0.dll
+          elif [ -f .libs/sqlite3.dll ]; then
+            cp -f .libs/sqlite3.dll ../../output/libsqlcipher-0.dll
           else
-            echo "⚙️ Gerando manualmente libsqlcipher-0.dll..."
-            gcc -shared -o ../../output/libsqlcipher-0.dll sqlite3.o -lssl -lcrypto -lz -static-libgcc -static-libstdc++
+            echo "❌ ERRO: Nenhum arquivo DLL encontrado!"
+            ls -al .libs || true
+            exit 1
           fi
 
-          # Executável
+          # Copiar binários e headers
           cp -f sqlite3.exe ../../output/sqlcipher.exe || true
-
-          # Cabeçalho e libs
           cp -f sqlite3.h ../../output/sqlite.h || true
-          [ -f libsqlite3.a ] && cp -f libsqlite3.a ../../output/libsqlcipher.a || true
-          [ -f .libs/libsqlite3.a ] && cp -f .libs/libsqlite3.a ../../output/libsqlcipher.a || true
+          cp -f .libs/libsqlite3.a ../../output/libsqlcipher.a || true
 
           # Dependências
           cp -f /mingw64/bin/libssl-3-x64.dll ../../output/ || true
           cp -f /mingw64/bin/libcrypto-3-x64.dll ../../output/ || true
           cp -f /mingw64/bin/zlib1.dll ../../output/ || true
 
-          echo "🧩 Verificando libsqlcipher-0.dll..."
-          if [ ! -f ../../output/libsqlcipher-0.dll ]; then
-            echo "❌ ERRO: libsqlcipher-0.dll não foi encontrada!"
-            ls -lh ../../output
-            exit 1
-          fi
+          echo "🧹 Limpando símbolos e otimizando..."
+          strip ../../output/*.dll || true
+          strip ../../output/sqlcipher.exe || true
 
           echo "🗜️ Compactando artefatos..."
           cd ../../
           7z a sqlcipher-win64.zip ./output/*
 
-      - name: 📤 Upload artefatos
+      - name: 📦 Upload do artefato
         uses: actions/upload-artifact@v4
         with:
           name: sqlcipher-win64
