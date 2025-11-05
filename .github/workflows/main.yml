@@ -8,9 +8,6 @@ jobs:
     runs-on: windows-latest
 
     steps:
-      - name: 🔽 Checkout do repositório
-        uses: actions/checkout@v4
-
       - name: 🧰 Instalar MSYS2 e dependências
         uses: msys2/setup-msys2@v2
         with:
@@ -41,11 +38,12 @@ jobs:
           git clone https://github.com/sqlcipher/sqlcipher.git
           cd sqlcipher
 
-          echo "🔍 Verificando arquivos..."
-          ls -la | grep configure || echo "⚠️ Script configure será usado diretamente"
+          echo "🔍 Verificando script configure..."
+          ls -la | grep configure || echo "⚠️ configure será usado diretamente"
 
           echo "⚙️ Configurando build..."
-          export CFLAGS="-O2 -DSQLITE_HAS_CODEC -DSQLCIPHER_CRYPTO_OPENSSL -DSQLITE_TEMP_STORE=2 -DSQLITE_EXTRA_INIT=sqlcipher_extra_init -DSQLITE_EXTRA_SHUTDOWN=sqlcipher_extra_shutdown -I/mingw64/include"
+          export CFLAGS=-O2
+          export CPPFLAGS="-DSQLITE_HAS_CODEC -DSQLCIPHER_CRYPTO_OPENSSL -DSQLITE_TEMP_STORE=2 -I/mingw64/include"
           export LDFLAGS="-L/mingw64/lib -lssl -lcrypto -lz"
 
           ./configure --enable-shared --enable-static --disable-tcl
@@ -64,7 +62,7 @@ jobs:
           cp /mingw64/bin/libcrypto-3-x64.dll ../../output/ || true
           cp /mingw64/bin/zlib1.dll ../../output/ || true
 
-          echo "🗜️ Compactando..."
+          echo "🗜️ Compactando artefatos..."
           cd ../../
           7z a sqlcipher-win64.zip ./output/*
 
