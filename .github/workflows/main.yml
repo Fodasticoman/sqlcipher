@@ -24,16 +24,16 @@ jobs:
     - name: 🧹 Preparar ambiente limpo
       shell: pwsh
       run: |
-        $build = "D:\\a\\build_sqlcipher"
+        $build = "${{ github.workspace }}\\build_sqlcipher"
         Write-Host "🧽 Limpando diretório antigo: $build"
         if (Test-Path $build) {
           try {
             Remove-Item -Recurse -Force $build -ErrorAction Stop
           } catch {
             Write-Host "⚠️ Falhou, tentando com robocopy..."
-            New-Item -ItemType Directory -Path "D:\\a\\empty" -Force | Out-Null
-            & robocopy "D:\\a\\empty" $build /MIR | Out-Null
-            Remove-Item -Recurse -Force "D:\\a\\empty" -ErrorAction SilentlyContinue
+            New-Item -ItemType Directory -Path "${{ github.workspace }}\\empty" -Force | Out-Null
+            & robocopy "${{ github.workspace }}\\empty" $build /MIR | Out-Null
+            Remove-Item -Recurse -Force "${{ github.workspace }}\\empty" -ErrorAction SilentlyContinue
           }
         }
         New-Item -ItemType Directory -Force -Path $build | Out-Null
@@ -43,7 +43,7 @@ jobs:
       shell: msys2 {0}
       run: |
         set -euo pipefail
-        cd /d/a/build_sqlcipher
+        cd "${{ github.workspace }}/build_sqlcipher"
         git clone https://github.com/sqlcipher/sqlcipher.git
         cd sqlcipher
         git checkout v4.11.0 || git checkout c6e8461bfa0b7317dfd96278dd950b1eb6b21a1a
@@ -54,7 +54,7 @@ jobs:
       shell: msys2 {0}
       run: |
         set -euo pipefail
-        cd /d/a/build_sqlcipher/sqlcipher
+        cd "${{ github.workspace }}/build_sqlcipher/sqlcipher"
 
         echo "⚙️ Executando configure..."
         export CFLAGS="-O2 -DSQLITE_HAS_CODEC -DSQLCIPHER_CRYPTO_OPENSSL -DSQLITE_TEMP_STORE=2 \
@@ -74,8 +74,8 @@ jobs:
     - name: 📦 Copiar binários e dependências
       shell: pwsh
       run: |
-        $src = "D:\\a\\build_sqlcipher\\sqlcipher"
-        $out = "D:\\a\\artifacts"
+        $src = "${{ github.workspace }}\\build_sqlcipher\\sqlcipher"
+        $out = "${{ github.workspace }}\\artifacts"
         New-Item -ItemType Directory -Force -Path $out | Out-Null
 
         Copy-Item "$src\\sqlcipher.exe" $out -ErrorAction SilentlyContinue
@@ -90,12 +90,13 @@ jobs:
     - name: 🗜️ Compactar artefato final
       shell: pwsh
       run: |
-        $zip = "D:\\a\\sqlcipher-win64.zip"
-        Compress-Archive -Path "D:\\a\\artifacts\\*" -DestinationPath $zip -Force
-        Write-Host "✅ Arquivo compactado: $zip"
+        $zip = "${{ github.workspace }}\\sqlcipher-win64.zip"
+        Compress-Archive -Path "${{ github.workspace }}\\artifacts\\*" -DestinationPath $zip -Force
+        Write-Host "✅ Arquivo compactado em: $zip"
+        Get-ChildItem "${{ github.workspace }}"
 
     - name: 🚀 Upload de artefato
       uses: actions/upload-artifact@v4
       with:
         name: sqlcipher-win64
-        path: D:\a\sqlcipher-win64.zip
+        path: ${{ github.workspace }}/sqlcipher-win64.zip
