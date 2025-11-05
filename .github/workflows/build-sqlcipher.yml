@@ -1,4 +1,4 @@
-name: Build SQLCipher for Windows (libsqlcipher-0.dll included)
+name: SQLCipher for Windows
 
 on:
   workflow_dispatch:
@@ -30,6 +30,7 @@ jobs:
             libtool
             make
             git
+            p7zip
           msystem: MINGW64
 
       - name: ⚙️ Compilar SQLCipher
@@ -37,6 +38,7 @@ jobs:
         run: |
           set -euo pipefail
           export MSYS_NO_PATHCONV=1
+
           echo "📁 Criando diretórios..."
           mkdir -p build_sqlcipher && cd build_sqlcipher
 
@@ -82,6 +84,13 @@ jobs:
           cp -f /mingw64/bin/libssl-3-x64.dll ../../output/ || true
           cp -f /mingw64/bin/libcrypto-3-x64.dll ../../output/ || true
           cp -f /mingw64/bin/zlib1.dll ../../output/ || true
+
+          echo "🧩 Verificando libsqlcipher-0.dll..."
+          if [ ! -f ../../output/libsqlcipher-0.dll ]; then
+            echo "❌ ERRO: libsqlcipher-0.dll não foi encontrada!"
+            ls -lh ../../output
+            exit 1
+          fi
 
           echo "🗜️ Compactando artefatos..."
           cd ../../
