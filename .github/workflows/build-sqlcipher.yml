@@ -8,7 +8,7 @@ jobs:
     runs-on: windows-latest
 
     steps:
-      - name: 🧰 Configurando MSYS2
+      - name: 🧰 Configurar ambiente MSYS2
         uses: msys2/setup-msys2@v2
         with:
           update: true
@@ -21,7 +21,7 @@ jobs:
             zip
             p7zip
 
-      - name: 🧱 Compilando SQLCipher
+      - name: 🧩 Compilar SQLCipher
         shell: msys2 {0}
         run: |
           set -euo pipefail
@@ -31,7 +31,7 @@ jobs:
           mkdir -p build_sqlcipher
           cd build_sqlcipher
 
-          echo "⬇️ Baixando release SQLCipher..."
+          echo "⬇️ Baixando SQLCipher..."
           wget -q https://github.com/sqlcipher/sqlcipher/archive/refs/tags/v4.11.0.tar.gz -O sqlcipher.tar.gz
           tar -xzf sqlcipher.tar.gz
           cd sqlcipher-4.11.0
@@ -41,23 +41,27 @@ jobs:
           export CPPFLAGS="-DSQLITE_HAS_CODEC -DSQLCIPHER_CRYPTO_OPENSSL -DSQLITE_TEMP_STORE=2 -DSQLITE_EXTRA_INIT=sqlcipher_extra_init -DSQLITE_EXTRA_SHUTDOWN=sqlcipher_extra_shutdown -D_WIN32_WINNT=0x0601 -I/mingw64/include"
           export LDFLAGS="-L/mingw64/lib -lssl -lcrypto -lz -static-libgcc -static-libstdc++"
 
-          ./configure --enable-shared --enable-static --disable-tcl --disable-load-extension
+          ./configure --enable-shared --enable-static --disable-tcl --disable-load-extension --program-prefix=sqlcipher
 
           echo "🧱 Compilando..."
           make -j$(nproc)
 
-          echo "✅ Build concluído com sucesso."
+          echo "✅ Build concluído. Preparando saída..."
           mkdir -p ../../output
 
           echo "📦 Copiando artefatos..."
-          if [ -f .libs/libsqlcipher-0.dll ]; then
-            cp -f .libs/libsqlcipher-0.dll ../../output/
-          elif [ -f .libs/libsqlite3-0.dll ]; then
-            cp -f .libs/libsqlite3-0.dll ../../output/libsqlcipher-0.dll
+          # Procurar qualquer DLL gerada relacionada a sqlcipher/sqlite3
+          found_dll=$(find .libs -type f \( -iname "*sqlcipher*.dll" -o -iname "*sqlite3*.dll" \) | head -n 1 || true)
+          if [ -n "$found_dll" ]; then
+            echo "🔍 Encontrado: $found_dll"
+            cp -f "$found_dll" ../../output/libsqlcipher-0.dll
+          else
+            echo "❌ Nenhuma DLL encontrada em .libs:"
+            ls -al .libs || true
           fi
 
-          cp -f .libs/libsqlcipher.a ../../output/ || true
-          cp -f sqlcipher.exe ../../output/ || cp -f sqlite3.exe ../../output/sqlcipher.exe || true
+          cp -f .libs/*.a ../../output/ 2>/dev/null || true
+          cp -f sqlcipher.exe ../../output/ 2>/dev/null || cp -f sqlite3.exe ../../output/sqlcipher.exe || true
           cp -f sqlite3.h ../../output/sqlite.h || true
           cp -f /mingw64/bin/libssl-3-x64.dll ../../output/ || true
           cp -f /mingw64/bin/libcrypto-3-x64.dll ../../output/ || true
@@ -67,7 +71,7 @@ jobs:
           cd ../../
           7z a sqlcipher-win64.zip ./output/*
 
-      - name: 📤 Enviando artefatos
+      - name: 📤 Publicar artefatos
         uses: actions/upload-artifact@v4
         with:
           name: sqlcipher-win64
