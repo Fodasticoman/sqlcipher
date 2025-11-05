@@ -1,4 +1,4 @@
-name: Build SQLCipher for Windows
+name: Build SQLCipher for Windows (Stable)
 
 on:
   workflow_dispatch:
@@ -6,32 +6,9 @@ on:
 jobs:
   build:
     runs-on: windows-latest
+
     steps:
-    - name: 🧹 Limpar diretório antigo (forçado)
-      shell: pwsh
-      run: |
-        $root = "D:\\a\\sqlcipher"
-        Write-Host "🧽 Limpando $root..."
-
-        try {
-          Get-Process bash, make, sh, git -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
-        } catch {}
-
-        if (Test-Path $root) {
-          Write-Host "🧹 Removendo $root..."
-          try {
-            Remove-Item -Recurse -Force $root -ErrorAction Stop
-          } catch {
-            Write-Host "⚠️ Remoção direta falhou, tentando com robocopy..."
-            New-Item -ItemType Directory -Path "D:\\a\\empty" -Force | Out-Null
-            $rc = Start-Process -FilePath "robocopy" -ArgumentList @("D:\\a\\empty", $root, "/MIR") -Wait -PassThru
-            if ($rc.ExitCode -ge 8) { exit 1 }
-            Remove-Item -Recurse -Force "D:\\a\\empty" -ErrorAction SilentlyContinue
-          }
-        }
-        Write-Host "✅ Ok! Diretório limpo."
-
-    - name: 🔧 Instalar MSYS2 + Build Deps
+    - name: 🔧 Instalar MSYS2 e dependências
       uses: msys2/setup-msys2@v2
       with:
         msystem: MINGW64
@@ -46,46 +23,69 @@ jobs:
           libtool
           git
 
+    - name: 🧹 Preparar ambiente limpo
+      shell: pwsh
+      run: |
+        $build = "D:\\a\\build_sqlcipher"
+        Write-Host "🧽 Limpando diretório antigo: $build"
+        if (Test-Path $build) {
+          try {
+            Remove-Item -Recurse -Force $build -ErrorAction Stop
+          } catch {
+            Write-Host "⚠️ Falhou, tentando com robocopy..."
+            New-Item -ItemType Directory -Path "D:\\a\\empty" -Force | Out-Null
+            & robocopy "D:\\a\\empty" $build /MIR | Out-Null
+            Remove-Item -Recurse -Force "D:\\a\\empty" -ErrorAction SilentlyContinue
+          }
+        }
+        New-Item -ItemType Directory -Force -Path $build | Out-Null
+        Write-Host "✅ Diretório de build preparado."
+
     - name: ⬇️ Clonar SQLCipher
       shell: msys2 {0}
       run: |
         set -euo pipefail
-        cd /d/a
+        cd /d/a/build_sqlcipher
         git clone https://github.com/sqlcipher/sqlcipher.git
         cd sqlcipher
         git checkout v4.11.0 || git checkout c6e8461bfa0b7317dfd96278dd950b1eb6b21a1a
-        echo "✅ Clone OK!"
+        echo "✅ SQLCipher v4.11.0 clonado."
 
-    - name: 🏗️ Configurar & Compilar SQLCipher
+    - name: 🏗️ Compilar SQLCipher
       shell: msys2 {0}
       run: |
         set -euo pipefail
-        cd /d/a/sqlcipher
+        cd /d/a/build_sqlcipher/sqlcipher
+        echo "⚙️ Configurando..."
+        autoreconf -fi
 
-        export CFLAGS="-O2 -DSQLITE_HAS_CODEC -DSQLCIPHER_CRYPTO_OPENSSL \
-        -DSQLITE_TEMP_STORE=2 -I/mingw64/include"
-
+        export CFLAGS="-O2 -DSQLITE_HAS_CODEC -DSQLCIPHER_CRYPTO_OPENSSL -DSQLITE_TEMP_STORE=2 -I/mingw64/include"
         export LDFLAGS="-L/mingw64/lib -lssl -lcrypto -lz"
 
-        autoreconf -fi
         ./configure --enable-shared --enable-static --disable-tcl
+        echo "🧩 Compilando..."
         make -j$(nproc)
+        echo "✅ Build concluído."
+
         strip sqlcipher.exe || true
         strip .libs/libsqlcipher-0.dll || true
 
-    - name: 📦 Copiar artefatos finais
+    - name: 📦 Copiar DLLs e executável
       shell: pwsh
       run: |
-        $dist = "D:\\a\\artifacts"
-        New-Item -ItemType Directory -Force -Path $dist | Out-Null
-        Copy-Item "D:\\a\\sqlcipher\\sqlcipher.exe" $dist
-        Copy-Item "D:\\a\\sqlcipher\\.libs\\libsqlcipher-0.dll" $dist
-        Copy-Item "C:\\msys64\\mingw64\\bin\\libcrypto-3-x64.dll" $dist
-        Copy-Item "C:\\msys64\\mingw64\\bin\\libssl-3-x64.dll" $dist
-        Copy-Item "C:\\msys64\\mingw64\\bin\\zlib1.dll" $dist
-        Write-Host "✅ Arquivos copiados para $dist"
+        $src = "D:\\a\\build_sqlcipher\\sqlcipher"
+        $out = "D:\\a\\artifacts"
+        New-Item -ItemType Directory -Force -Path $out | Out-Null
 
-    - name: 📤 Publicar artifacts
+        Copy-Item "$src\\sqlcipher.exe" $out
+        Copy-Item "$src\\.libs\\libsqlcipher-0.dll" $out
+        Copy-Item "C:\\msys64\\mingw64\\bin\\libcrypto-3-x64.dll" $out
+        Copy-Item "C:\\msys64\\mingw64\\bin\\libssl-3-x64.dll" $out
+        Copy-Item "C:\\msys64\\mingw64\\bin\\zlib1.dll" $out
+
+        Write-Host "✅ Todos os binários copiados para $out"
+
+    - name: 🚀 Upload de artefatos
       uses: actions/upload-artifact@v4
       with:
         name: sqlcipher-windows
