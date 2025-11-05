@@ -18,14 +18,11 @@ jobs:
             mingw-w64-x86_64-toolchain
             mingw-w64-x86_64-openssl
             mingw-w64-x86_64-zlib
-            autoconf
-            automake
-            libtool
             p7zip
             zip
-            git
+            wget
 
-      - name: 🧩 Compilar SQLCipher
+      - name: 🧩 Baixar e compilar SQLCipher
         shell: msys2 {0}
         run: |
           set -euo pipefail
@@ -35,36 +32,17 @@ jobs:
           mkdir -p build_sqlcipher
           cd build_sqlcipher
 
-          echo "⬇️ Clonando SQLCipher..."
-          git clone --depth 1 https://github.com/sqlcipher/sqlcipher.git
-          cd sqlcipher
-
-          echo "🔧 Regenerando configure..."
-          autoreconf -fi
+          echo "⬇️ Baixando release SQLCipher..."
+          wget -q https://github.com/sqlcipher/sqlcipher/archive/refs/tags/v4.11.0.tar.gz -O sqlcipher.tar.gz
+          tar -xzf sqlcipher.tar.gz
+          cd sqlcipher-4.11.0
 
           echo "⚙️ Configurando build..."
           export CFLAGS="-O2 -D_FILE_OFFSET_BITS=64"
           export CPPFLAGS="-DSQLITE_HAS_CODEC -DSQLCIPHER_CRYPTO_OPENSSL -DSQLITE_TEMP_STORE=2 -D_WIN32_WINNT=0x0601 -I/mingw64/include"
           export LDFLAGS="-L/mingw64/lib -lssl -lcrypto -lz -static-libgcc -static-libstdc++"
 
-          # Forçar detecções para evitar erros no Windows
-          export ac_cv_func_pread=no
-          export ac_cv_func_pwrite=no
-          export ac_cv_func_fdatasync=no
-          export ac_cv_func_dlopen=no
-          export ac_cv_header_dlfcn_h=no
-          export ac_cv_func_gmtime_r=no
-          export ac_cv_func_localtime_r=no
-          export ac_cv_func_localtime_s=no
-          export ac_cv_func_strchrnul=no
-          export ac_cv_func_pread64=no
-          export ac_cv_func_pwrite64=no
-          export ac_cv_func_nanosleep=yes
-          export ac_cv_func_usleep=yes
-          export ac_cv_func_utime=yes
-          export ac_cv_func_isnan=yes
-
-          ./configure --enable-shared --enable-static --disable-tcl --disable-load-extension || (cat config.log && false)
+          ./configure --enable-shared --enable-static --disable-tcl --disable-load-extension
 
           echo "🧱 Compilando..."
           make -j$(nproc)
@@ -73,22 +51,10 @@ jobs:
           mkdir -p ../../output
 
           echo "📦 Copiando artefatos..."
-          # DLL gerada pode ser libsqlite3-0.dll ou libsqlcipher-0.dll dependendo da versão
-          if [ -f .libs/libsqlite3-0.dll ]; then
-            cp -f .libs/libsqlite3-0.dll ../../output/libsqlcipher-0.dll
-          elif [ -f .libs/libsqlcipher-0.dll ]; then
-            cp -f .libs/libsqlcipher-0.dll ../../output/libsqlcipher-0.dll
-          else
-            echo "❌ ERRO: Nenhum arquivo libsqlcipher-0.dll foi encontrado!"
-            ls -al .libs || true
-            exit 1
-          fi
-
-          cp -f .libs/libsqlite3.a ../../output/libsqlcipher.a || true
-          cp -f sqlite3.exe ../../output/sqlcipher.exe || true
+          cp -f .libs/libsqlcipher-0.dll ../../output/ || true
+          cp -f .libs/libsqlcipher.a ../../output/ || true
+          cp -f sqlcipher.exe ../../output/ || true
           cp -f sqlite3.h ../../output/sqlite.h || true
-
-          # Dependências no mesmo diretório
           cp -f /mingw64/bin/libssl-3-x64.dll ../../output/ || true
           cp -f /mingw64/bin/libcrypto-3-x64.dll ../../output/ || true
           cp -f /mingw64/bin/zlib1.dll ../../output/ || true
