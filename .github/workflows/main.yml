@@ -44,9 +44,11 @@ jobs:
           git clone --depth 1 https://github.com/sqlcipher/sqlcipher.git
           cd sqlcipher
 
-          echo "🔧 Regenerando scripts autotools..."
-          rm -rf configure aclocal.m4 autom4te.cache
-          autoreconf -fi
+          echo "🔍 Verificando script configure..."
+          if [ ! -f configure ]; then
+            echo "⚠️ Script configure não encontrado. Gerando com autoreconf..."
+            autoreconf -fi
+          fi
 
           echo "⚙️ Configurando build..."
           export CFLAGS="-O2"
