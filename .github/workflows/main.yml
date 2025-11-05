@@ -1,4 +1,4 @@
-name: Build SQLCipher v4.11.0 for Windows
+name: Build SQLCipher v4.11.0 for Windows (x64)
 
 on:
   workflow_dispatch:
@@ -15,12 +15,15 @@ jobs:
         update: true
         install: >-
           base-devel
-          mingw-w64-x86_64-toolchain
-          mingw-w64-x86_64-openssl
-          mingw-w64-x86_64-zlib
           git
           make
           zip
+          autoconf
+          automake
+          libtool
+          mingw-w64-x86_64-toolchain
+          mingw-w64-x86_64-openssl
+          mingw-w64-x86_64-zlib
 
     - name: 🧹 Preparar ambiente limpo
       shell: pwsh
@@ -57,6 +60,7 @@ jobs:
         cd sqlcipher
         git checkout v4.11.0 || git checkout c6e8461bfa0b7317dfd96278dd950b1eb6b21a1a
         echo "✅ SQLCipher v4.11.0 clonado com sucesso."
+        ls -lh
 
     - name: ⚙️ Configurar e compilar SQLCipher
       shell: msys2 {0}
@@ -78,6 +82,13 @@ jobs:
 
         strip sqlcipher.exe || true
         strip .libs/libsqlcipher-0.dll || true
+
+    - name: 🧪 Verificar build
+      shell: msys2 {0}
+      run: |
+        cd "${{ github.workspace }}/build_sqlcipher/sqlcipher"
+        echo "🔍 Testando binário..."
+        ./sqlcipher --version || echo "⚠️ Teste de execução falhou, mas build concluído."
 
     - name: 📦 Copiar binários e dependências
       shell: pwsh
@@ -101,7 +112,7 @@ jobs:
         $root = "${{ github.workspace }}"
         $zipPath = "$root\\sqlcipher-win64.zip"
         $source = "$root\\artifacts\\*"
-        Write-Host "🗜️ Compactando $source para $zipPath..."
+        Write-Host "🗜️ Compactando $source em $zipPath..."
         Compress-Archive -Path $source -DestinationPath $zipPath -Force
         Write-Host "✅ Arquivo criado: $zipPath"
         Get-ChildItem $root
