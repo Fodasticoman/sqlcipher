@@ -14,7 +14,7 @@ jobs:
       - name: 🧰 Checkout do repositório
         uses: actions/checkout@v4
 
-      - name: 🧱 Configurar MSYS2
+      - name: 🧱 Configurar ambiente MSYS2
         uses: msys2/setup-msys2@v2
         with:
           update: true
@@ -51,8 +51,8 @@ jobs:
           fi
 
           echo "⚙️ Configurando build..."
-          export CFLAGS=-O2
-          export CPPFLAGS=-DSQLITE_HAS_CODEC -DSQLCIPHER_CRYPTO_OPENSSL -DSQLITE_TEMP_STORE=2 -I/mingw64/include
+          export CFLAGS="-O2"
+          export CPPFLAGS="-DSQLITE_HAS_CODEC -DSQLCIPHER_CRYPTO_OPENSSL -DSQLITE_TEMP_STORE=2 -I/mingw64/include"
           export LDFLAGS="-L/mingw64/lib -lssl -lcrypto -lz"
 
           bash ./configure --enable-shared --enable-static --disable-tcl
