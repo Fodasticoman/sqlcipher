@@ -1,159 +1,92 @@
-name: Build SQLCipher v4.11.0 (Windows + OpenSSL + Zlib)
+name: Build SQLCipher for Windows
 
 on:
   workflow_dispatch:
 
 jobs:
-  build-sqlcipher:
+  build:
     runs-on: windows-latest
-
     steps:
-      # =====================================================
-      # 🧹 LIMPEZA COMPLETA DO DIRETÓRIO
-      # =====================================================
-      - name: 🧹 Limpar diretório antigo (forçado)
-        shell: pwsh
-        run: |
-          $root = "D:\\a\\sqlcipher"
-          Write-Host "🧽 Limpando $root..."
+    - name: 🧹 Limpar diretório antigo (forçado)
+      shell: pwsh
+      run: |
+        $root = "D:\\a\\sqlcipher"
+        Write-Host "🧽 Limpando $root..."
 
-          # Tentar encerrar processos que possam bloquear o diretório
+        try {
+          Get-Process bash, make, sh, git -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+        } catch {}
+
+        if (Test-Path $root) {
+          Write-Host "🧹 Removendo $root..."
           try {
-            Get-Process bash, make -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
-          } catch {}
-
-          if (Test-Path $root) {
-            Write-Host "🧹 Removendo $root (modo forçado)..."
-
-            # Corrige atributos de arquivos e pastas
-            try {
-              & cmd /c "attrib -r -h -s `"$root`" /s /d"
-            } catch {
-              Write-Host "⚠️ Falha ao limpar atributos: $($_.Exception.Message)"
-            }
-
-            # Tentativa direta de exclusão
-            try {
-              Remove-Item -Recurse -Force $root -ErrorAction Stop
-            } catch {
-              Write-Host "⚠️ Remoção direta falhou, tentando com robocopy..."
-              New-Item -ItemType Directory -Path "D:\\a\\empty" -Force | Out-Null
-              & robocopy "D:\\a\\empty" $root /MIR | Out-Null
-              Remove-Item -Recurse -Force "D:\\a\\empty" -ErrorAction SilentlyContinue
-            }
+            Remove-Item -Recurse -Force $root -ErrorAction Stop
+          } catch {
+            Write-Host "⚠️ Remoção direta falhou, tentando com robocopy..."
+            New-Item -ItemType Directory -Path "D:\\a\\empty" -Force | Out-Null
+            $rc = Start-Process -FilePath "robocopy" -ArgumentList @("D:\\a\\empty", $root, "/MIR") -Wait -PassThru
+            if ($rc.ExitCode -ge 8) { exit 1 }
+            Remove-Item -Recurse -Force "D:\\a\\empty" -ErrorAction SilentlyContinue
           }
+        }
+        Write-Host "✅ Ok! Diretório limpo."
 
-          Write-Host "✅ Diretório limpo com sucesso."
+    - name: 🔧 Instalar MSYS2 + Build Deps
+      uses: msys2/setup-msys2@v2
+      with:
+        msystem: MINGW64
+        update: true
+        install: >-
+          base-devel
+          mingw-w64-x86_64-toolchain
+          mingw-w64-x86_64-openssl
+          mingw-w64-x86_64-zlib
+          autoconf
+          automake
+          libtool
+          git
 
-      # =====================================================
-      # 🧰 INSTALAR AMBIENTE MSYS2 E DEPENDÊNCIAS
-      # =====================================================
-      - name: 🧰 Preparar ambiente MSYS2
-        uses: msys2/setup-msys2@v2
-        with:
-          update: true
-          install: >
-            git make automake autoconf libtool zip
-            mingw-w64-x86_64-gcc
-            mingw-w64-x86_64-openssl
-            mingw-w64-x86_64-zlib
-            mingw-w64-x86_64-tcl
+    - name: ⬇️ Clonar SQLCipher
+      shell: msys2 {0}
+      run: |
+        set -euo pipefail
+        cd /d/a
+        git clone https://github.com/sqlcipher/sqlcipher.git
+        cd sqlcipher
+        git checkout v4.11.0 || git checkout c6e8461bfa0b7317dfd96278dd950b1eb6b21a1a
+        echo "✅ Clone OK!"
 
-      # =====================================================
-      # 📦 CLONAR SQLCIPHER
-      # =====================================================
-      - name: 📦 Clonar repositório SQLCipher
-        shell: msys2 {0}
-        run: |
-          set -euo pipefail
-          echo "=== Clonando SQLCipher versão v4.11.0 ==="
-          cd /d/a
-          git clone https://github.com/sqlcipher/sqlcipher.git
-          cd sqlcipher
-          git checkout v4.11.0 || git checkout c6e8461bfa0b7317dfd96278dd950b1eb6b21a1a
-          echo "✅ SQLCipher v4.11.0 clonado com sucesso."
-          ls -lh . || true
+    - name: 🏗️ Configurar & Compilar SQLCipher
+      shell: msys2 {0}
+      run: |
+        set -euo pipefail
+        cd /d/a/sqlcipher
 
-      # =====================================================
-      # ⚙️ COMPILAR SQLCIPHER
-      # =====================================================
-      - name: ⚙️ Compilar SQLCipher 4.11.0
-        shell: msys2 {0}
-        run: |
-          set -euo pipefail
-          echo "=== Iniciando build SQLCipher v4.11.0 ==="
-          cd /d/a/sqlcipher/sqlcipher
+        export CFLAGS="-O2 -DSQLITE_HAS_CODEC -DSQLCIPHER_CRYPTO_OPENSSL \
+        -DSQLITE_TEMP_STORE=2 -I/mingw64/include"
 
-          export CFLAGS="-O2 -DSQLITE_HAS_CODEC -DSQLCIPHER_CRYPTO_OPENSSL \
-          -DSQLITE_EXTRA_INIT=sqlcipher_extra_init \
-          -DSQLITE_EXTRA_SHUTDOWN=sqlcipher_extra_shutdown \
-          -DSQLITE_TEMP_STORE=2 -I/mingw64/include"
+        export LDFLAGS="-L/mingw64/lib -lssl -lcrypto -lz"
 
-          export LDFLAGS="-L/mingw64/lib -lssl -lcrypto -lz"
+        autoreconf -fi
+        ./configure --enable-shared --enable-static --disable-tcl
+        make -j$(nproc)
+        strip sqlcipher.exe || true
+        strip .libs/libsqlcipher-0.dll || true
 
-          echo "🛠️ Executando autoconf..."
-          autoreconf -fi
+    - name: 📦 Copiar artefatos finais
+      shell: pwsh
+      run: |
+        $dist = "D:\\a\\artifacts"
+        New-Item -ItemType Directory -Force -Path $dist | Out-Null
+        Copy-Item "D:\\a\\sqlcipher\\sqlcipher.exe" $dist
+        Copy-Item "D:\\a\\sqlcipher\\.libs\\libsqlcipher-0.dll" $dist
+        Copy-Item "C:\\msys64\\mingw64\\bin\\libcrypto-3-x64.dll" $dist
+        Copy-Item "C:\\msys64\\mingw64\\bin\\libssl-3-x64.dll" $dist
+        Copy-Item "C:\\msys64\\mingw64\\bin\\zlib1.dll" $dist
+        Write-Host "✅ Arquivos copiados para $dist"
 
-          echo "⚙️ Executando configure..."
-          ./configure --enable-shared --enable-static --disable-tcl
-
-          echo "⚙️ Compilando..."
-          make -j$(nproc)
-
-          echo "✅ Build concluído com sucesso!"
-          ls -lh . || true
-
-      # =====================================================
-      # 🧩 COPIAR BINÁRIOS E DEPENDÊNCIAS
-      # =====================================================
-      - name: 🧩 Copiar binários e dependências
-        shell: msys2 {0}
-        run: |
-          set -euo pipefail
-          cd /d/a/sqlcipher/sqlcipher
-
-          mkdir -p /d/a/sqlcipher/dist
-          cp sqlite3.exe /d/a/sqlcipher/dist/sqlcipher.exe || true
-          cp .libs/libsqlite3-0.dll /d/a/sqlcipher/dist/libsqlcipher-0.dll || true
-          cp sqlite3.h /d/a/sqlcipher/dist/sqlcipher.h || true
-          cp sqlite3ext.h /d/a/sqlcipher/dist/sqlcipherext.h || true
-
-          # Copiar dependências OpenSSL e Zlib
-          cp /mingw64/bin/libcrypto-3-x64.dll /d/a/sqlcipher/dist/ || true
-          cp /mingw64/bin/libssl-3-x64.dll /d/a/sqlcipher/dist/ || true
-          cp /mingw64/bin/zlib1.dll /d/a/sqlcipher/dist/ || true
-
-          echo "✅ Todos os binários e DLLs copiados com sucesso."
-          ls -lh /d/a/sqlcipher/dist
-
-      # =====================================================
-      # 🧪 TESTAR BINÁRIO COMPILADO
-      # =====================================================
-      - name: 🧪 Testar versão compilada
-        shell: msys2 {0}
-        run: |
-          cd /d/a/sqlcipher/dist
-          ./sqlcipher --version || echo "⚠️ Não foi possível verificar versão, mas o binário existe."
-
-      # =====================================================
-      # 🗜️ CRIAR ARQUIVO ZIP FINAL
-      # =====================================================
-      - name: 🗜️ Compactar resultado final
-        shell: pwsh
-        run: |
-          $distPath = "D:/a/sqlcipher/dist"
-          if (-Not (Test-Path $distPath)) {
-            Write-Error "❌ Diretório $distPath não encontrado!"
-            exit 1
-          }
-          Compress-Archive -Path "$distPath/*" -DestinationPath "D:/a/sqlcipher/sqlcipher-4.11.0-win64.zip" -Force
-          Write-Host "✅ Arquivo ZIP criado com sucesso."
-
-      # =====================================================
-      # 📤 PUBLICAR ARTEFATO FINAL
-      # =====================================================
-      - name: 📤 Publicar artefato compilado
-        uses: actions/upload-artifact@v4
-        with:
-          name: sqlcipher-4.11.0-win64
-          path: D:/a/sqlcipher/sqlcipher-4.11.0-win64.zip
+    - name: 📤 Publicar artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: sqlcipher-windows
+        path: D:\a\artifacts
