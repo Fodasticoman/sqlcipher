@@ -44,18 +44,16 @@ jobs:
           git clone --depth 1 https://github.com/sqlcipher/sqlcipher.git
           cd sqlcipher
 
-          echo "🔍 Verificando script configure..."
-          if [ ! -f configure ]; then
-            echo "⚠️ Script configure não encontrado. Gerando com autoreconf..."
-            autoreconf -fi
-          fi
+          echo "🔧 Regenerando scripts autotools..."
+          rm -rf configure aclocal.m4 autom4te.cache
+          autoreconf -fi
 
           echo "⚙️ Configurando build..."
           export CFLAGS="-O2"
           export CPPFLAGS="-DSQLITE_HAS_CODEC -DSQLCIPHER_CRYPTO_OPENSSL -DSQLITE_TEMP_STORE=2 -I/mingw64/include"
           export LDFLAGS="-L/mingw64/lib -lssl -lcrypto -lz"
 
-          bash ./configure --enable-shared --enable-static --disable-tcl
+          ./configure --enable-shared --enable-static --disable-tcl
 
           echo "🧩 Compilando..."
           make -j$(nproc)
