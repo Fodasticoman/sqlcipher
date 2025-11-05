@@ -1,4 +1,4 @@
-name: Build SQLCipher (Windows)
+name: Build SQLCipher for Windows (with DLL rename)
 
 on:
   workflow_dispatch:
@@ -8,7 +8,7 @@ jobs:
     runs-on: windows-latest
 
     steps:
-      - name: 🧰 Configurar ambiente MSYS2
+      - name: 🧰 Instalar dependências
         uses: msys2/setup-msys2@v2
         with:
           update: true
@@ -17,9 +17,13 @@ jobs:
             mingw-w64-x86_64-toolchain
             mingw-w64-x86_64-openssl
             mingw-w64-x86_64-zlib
-            wget
             zip
             p7zip
+            git
+            wget
+            autoconf
+            automake
+            libtool
 
       - name: 🧩 Compilar SQLCipher
         shell: msys2 {0}
@@ -31,17 +35,19 @@ jobs:
           mkdir -p build_sqlcipher
           cd build_sqlcipher
 
-          echo "⬇️ Baixando SQLCipher..."
-          wget -q https://github.com/sqlcipher/sqlcipher/archive/refs/tags/v4.11.0.tar.gz -O sqlcipher.tar.gz
-          tar -xzf sqlcipher.tar.gz
-          cd sqlcipher-4.11.0
+          echo "⬇️ Clonando SQLCipher..."
+          git clone --depth 1 https://github.com/sqlcipher/sqlcipher.git
+          cd sqlcipher
+
+          echo "🔧 Gerando arquivos de configuração..."
+          autoreconf -fi
 
           echo "⚙️ Configurando build..."
           export CFLAGS="-O2 -D_FILE_OFFSET_BITS=64"
-          export CPPFLAGS="-DSQLITE_HAS_CODEC -DSQLCIPHER_CRYPTO_OPENSSL -DSQLITE_TEMP_STORE=2 -DSQLITE_EXTRA_INIT=sqlcipher_extra_init -DSQLITE_EXTRA_SHUTDOWN=sqlcipher_extra_shutdown -D_WIN32_WINNT=0x0601 -I/mingw64/include"
+          export CPPFLAGS="-DSQLITE_HAS_CODEC -DSQLCIPHER_CRYPTO_OPENSSL -DSQLITE_TEMP_STORE=2 -D_WIN32_WINNT=0x0601 -I/mingw64/include"
           export LDFLAGS="-L/mingw64/lib -lssl -lcrypto -lz -static-libgcc -static-libstdc++"
 
-          ./configure --enable-shared --enable-static --disable-tcl --disable-load-extension --program-prefix=sqlcipher
+          ./configure --enable-shared --enable-static --disable-tcl --disable-load-extension
 
           echo "🧱 Compilando..."
           make -j$(nproc)
@@ -50,19 +56,26 @@ jobs:
           mkdir -p ../../output
 
           echo "📦 Copiando artefatos..."
-          # Procurar qualquer DLL gerada relacionada a sqlcipher/sqlite3
-          found_dll=$(find .libs -type f \( -iname "*sqlcipher*.dll" -o -iname "*sqlite3*.dll" \) | head -n 1 || true)
-          if [ -n "$found_dll" ]; then
-            echo "🔍 Encontrado: $found_dll"
-            cp -f "$found_dll" ../../output/libsqlcipher-0.dll
+          # Se a lib gerada tiver outro nome, renomeia para libsqlcipher-0.dll
+          if [ -f .libs/libsqlite3-0.dll ]; then
+            cp -f .libs/libsqlite3-0.dll ../../output/libsqlcipher-0.dll
+          elif [ -f .libs/sqlite3.dll ]; then
+            cp -f .libs/sqlite3.dll ../../output/libsqlcipher-0.dll
+          elif [ -f .libs/libsqlcipher-0.dll ]; then
+            cp -f .libs/libsqlcipher-0.dll ../../output/libsqlcipher-0.dll
           else
-            echo "❌ Nenhuma DLL encontrada em .libs:"
-            ls -al .libs || true
+            echo "❌ Nenhum arquivo de DLL encontrado, criando a partir da lib estática..."
+            gcc -shared -o ../../output/libsqlcipher-0.dll .libs/sqlite3.o -lssl -lcrypto -lz -static-libgcc -static-libstdc++
           fi
 
-          cp -f .libs/*.a ../../output/ 2>/dev/null || true
-          cp -f sqlcipher.exe ../../output/ 2>/dev/null || cp -f sqlite3.exe ../../output/sqlcipher.exe || true
+          # Executável
+          cp -f sqlite3.exe ../../output/sqlcipher.exe || true
+
+          # Cabeçalho e libs
           cp -f sqlite3.h ../../output/sqlite.h || true
+          cp -f .libs/libsqlite3.a ../../output/libsqlcipher.a || true
+
+          # Dependências
           cp -f /mingw64/bin/libssl-3-x64.dll ../../output/ || true
           cp -f /mingw64/bin/libcrypto-3-x64.dll ../../output/ || true
           cp -f /mingw64/bin/zlib1.dll ../../output/ || true
@@ -71,7 +84,7 @@ jobs:
           cd ../../
           7z a sqlcipher-win64.zip ./output/*
 
-      - name: 📤 Publicar artefatos
+      - name: ⬆️ Upload artefatos
         uses: actions/upload-artifact@v4
         with:
           name: sqlcipher-win64
