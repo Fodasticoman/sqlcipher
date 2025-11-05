@@ -27,37 +27,37 @@ jobs:
       run: |
         $root = "${{ github.workspace }}"
         $build = "$root\\build_sqlcipher"
-        $artifacts = "$root\\artifacts"
+        $out = "$root\\out"
+        $empty = "$root\\empty"
 
-        Write-Host "🧽 Limpando diretórios antigos..."
-        foreach ($d in @($build, $artifacts)) {
+        Write-Host "🧽 Limpando ambiente..."
+        foreach ($d in @($build, $out, $empty)) {
           if (Test-Path $d) {
             try {
               Remove-Item -Recurse -Force $d -ErrorAction Stop
             } catch {
               Write-Host "⚠️ Falha ao remover $d, tentando robocopy..."
-              New-Item -ItemType Directory -Path "$root\\empty" -Force | Out-Null
-              & robocopy "$root\\empty" $d /MIR | Out-Null
-              Remove-Item -Recurse -Force "$root\\empty" -ErrorAction SilentlyContinue
+              New-Item -ItemType Directory -Path $empty -Force | Out-Null
+              & robocopy $empty $d /MIR | Out-Null
+              Remove-Item -Recurse -Force $empty -ErrorAction SilentlyContinue
             }
           }
         }
 
         New-Item -ItemType Directory -Force -Path $build | Out-Null
-        New-Item -ItemType Directory -Force -Path $artifacts | Out-Null
-        Write-Host "✅ Ambiente limpo pronto."
+        New-Item -ItemType Directory -Force -Path $out | Out-Null
+        Write-Host "✅ Diretórios prontos."
 
     - name: ⬇️ Clonar SQLCipher
       shell: msys2 {0}
       run: |
         set -euo pipefail
         cd "${{ github.workspace }}/build_sqlcipher"
-        echo "=== Clonando SQLCipher versão v4.11.0 ==="
+        echo "=== Clonando SQLCipher ==="
         git clone https://github.com/sqlcipher/sqlcipher.git
         cd sqlcipher
         git checkout v4.11.0 || git checkout c6e8461bfa0b7317dfd96278dd950b1eb6b21a1a
-        echo "✅ SQLCipher v4.11.0 clonado com sucesso."
-        ls -lh
+        echo "✅ Clone OK"
 
     - name: ⚙️ Configurar e compilar SQLCipher
       shell: msys2 {0}
@@ -66,30 +66,23 @@ jobs:
         cd "${{ github.workspace }}/build_sqlcipher/sqlcipher"
 
         echo "⚙️ Configurando build..."
-        export CFLAGS="-O2 -DSQLITE_HAS_CODEC -DSQLCIPHER_CRYPTO_OPENSSL -DSQLITE_TEMP_STORE=2 -DSQLITE_EXTRA_INIT=sqlcipher_extra_init -DSQLITE_EXTRA_SHUTDOWN=sqlcipher_extra_shutdown -I/mingw64/include"
+        export CFLAGS="-O2 -DSQLITE_HAS_CODEC -DSQLCIPHER_CRYPTO_OPENSSL -DSQLITE_TEMP_STORE=2 -I/mingw64/include"
         export LDFLAGS="-L/mingw64/lib -lssl -lcrypto -lz"
 
         ./configure --enable-shared --enable-static --disable-tcl
-        echo "🧩 Compilando SQLCipher..."
+        echo "🧩 Compilando..."
         make -j$(nproc)
-        echo "✅ Build concluído com sucesso."
+        echo "✅ Build concluído."
 
         strip sqlcipher.exe || true
         strip .libs/libsqlcipher-0.dll || true
 
-    - name: 🧪 Verificar binário
-      shell: msys2 {0}
-      run: |
-        cd "${{ github.workspace }}/build_sqlcipher/sqlcipher"
-        echo "🔍 Verificando versão compilada..."
-        ./sqlcipher --version || echo "⚠️ Não foi possível executar sqlcipher.exe"
-
-    - name: 📦 Copiar dependências
+    - name: 📦 Copiar binários
       shell: pwsh
       run: |
         $root = "${{ github.workspace }}"
         $src = "$root\\build_sqlcipher\\sqlcipher"
-        $out = "$root\\artifacts"
+        $out = "$root\\out"
 
         Write-Host "📦 Copiando binários..."
         Copy-Item "$src\\sqlcipher.exe" $out -ErrorAction SilentlyContinue
@@ -98,7 +91,7 @@ jobs:
         Copy-Item "C:\\msys64\\mingw64\\bin\\libssl-3-x64.dll" $out -ErrorAction SilentlyContinue
         Copy-Item "C:\\msys64\\mingw64\\bin\\zlib1.dll" $out -ErrorAction SilentlyContinue
 
-        Write-Host "✅ Arquivos copiados:"
+        Write-Host "✅ Conteúdo final:"
         Get-ChildItem $out
 
     - name: 🗜️ Compactar artefato final
@@ -106,12 +99,18 @@ jobs:
       run: |
         $root = "${{ github.workspace }}"
         $zipPath = "$root\\sqlcipher-win64.zip"
-        $source = "$root\\artifacts\\*"
-        Write-Host "🗜️ Compactando $source em $zipPath..."
-        Compress-Archive -Path $source -DestinationPath $zipPath -Force
-        Write-Host "✅ Criado: $zipPath"
+        $out = "$root\\out"
 
-    - name: 🚀 Upload artefato
+        Write-Host "🗜️ Compactando artefatos..."
+        Compress-Archive -Path "$out\\*" -DestinationPath $zipPath -Force
+        if (Test-Path $zipPath) {
+          Write-Host "✅ ZIP criado em: $zipPath"
+        } else {
+          Write-Host "❌ Falha: arquivo ZIP não foi gerado!"
+          exit 1
+        }
+
+    - name: 🚀 Upload do artefato
       uses: actions/upload-artifact@v4
       with:
         name: sqlcipher-win64
