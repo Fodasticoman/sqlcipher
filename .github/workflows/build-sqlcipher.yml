@@ -1,4 +1,4 @@
-name: Build SQLCipher for Windows (with DLL rename)
+name: Build SQLCipher for Windows (DLL + EXE)
 
 on:
   workflow_dispatch:
@@ -8,7 +8,7 @@ jobs:
     runs-on: windows-latest
 
     steps:
-      - name: 🧰 Instalar dependências
+      - name: 🧰 Instalar dependências MSYS2
         uses: msys2/setup-msys2@v2
         with:
           update: true
@@ -40,7 +40,7 @@ jobs:
 
           echo "⚙️ Configurando build..."
           export CFLAGS="-O2 -D_FILE_OFFSET_BITS=64"
-          export CPPFLAGS="-DSQLITE_HAS_CODEC -DSQLCIPHER_CRYPTO_OPENSSL -DSQLITE_TEMP_STORE=2 -D_WIN32_WINNT=0x0601 -I/mingw64/include"
+          export CPPFLAGS="-DSQLITE_HAS_CODEC -DSQLCIPHER_CRYPTO_OPENSSL -DSQLITE_TEMP_STORE=2 -DSQLITE_EXTRA_INIT=sqlcipher_extra_init -DSQLITE_EXTRA_SHUTDOWN=sqlcipher_extra_shutdown -D_WIN32_WINNT=0x0601 -I/mingw64/include"
           export LDFLAGS="-L/mingw64/lib -lssl -lcrypto -lz -static-libgcc -static-libstdc++"
 
           ./configure --enable-shared --enable-static --disable-tcl --disable-load-extension
@@ -80,7 +80,7 @@ jobs:
           cd ../../
           7z a sqlcipher-win64.zip ./output/*
 
-      - name: ⬆️ Upload artefatos
+      - name: ⬆️ Upload dos artefatos
         uses: actions/upload-artifact@v4
         with:
           name: sqlcipher-win64
