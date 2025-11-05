@@ -1,4 +1,4 @@
-name: Build SQLCipher v4.11.0 for Windows (x64)
+name: Build SQLCipher (Windows)
 
 on:
   workflow_dispatch:
@@ -8,117 +8,65 @@ jobs:
     runs-on: windows-latest
 
     steps:
-    - name: 🧰 Instalar MSYS2 e dependências
-      uses: msys2/setup-msys2@v2
-      with:
-        msystem: MINGW64
-        update: true
-        install: >-
-          base-devel
-          git
-          make
-          zip
-          mingw-w64-x86_64-toolchain
-          mingw-w64-x86_64-openssl
-          mingw-w64-x86_64-zlib
+      - name: 🔽 Checkout repositório
+        uses: actions/checkout@v4
 
-    - name: 🧹 Preparar ambiente limpo
-      shell: pwsh
-      run: |
-        $root = "${{ github.workspace }}"
-        $build = "$root\\build_sqlcipher"
-        $out = "$root\\out"
-        $empty = "$root\\empty"
+      - name: 🧰 Instalar MSYS2 e dependências
+        uses: msys2/setup-msys2@v2
+        with:
+          update: true
+          install: >-
+            base-devel
+            mingw-w64-x86_64-gcc
+            mingw-w64-x86_64-openssl
+            mingw-w64-x86_64-zlib
+            autoconf
+            automake
+            libtool
+            make
+            pkg-config
 
-        Write-Host "🧽 Limpando ambiente..."
-        foreach ($d in @($build, $out, $empty)) {
-          if (Test-Path $d) {
-            try {
-              Remove-Item -Recurse -Force $d -ErrorAction Stop
-            } catch {
-              Write-Host "⚠️ Falha ao remover $d, tentando robocopy..."
-              New-Item -ItemType Directory -Path $empty -Force | Out-Null
-              & robocopy $empty $d /MIR | Out-Null
-              Remove-Item -Recurse -Force $empty -ErrorAction SilentlyContinue
-            }
-          }
-        }
+      - name: ⚙️ Compilar SQLCipher (Windows x64)
+        shell: msys2 {0}
+        run: |
+          set -euo pipefail
 
-        New-Item -ItemType Directory -Force -Path $build | Out-Null
-        New-Item -ItemType Directory -Force -Path $out | Out-Null
-        Write-Host "✅ Diretórios prontos."
+          echo "📁 Criando diretórios..."
+          mkdir -p build_sqlcipher
+          cd build_sqlcipher
 
-    - name: ⬇️ Clonar SQLCipher
-      shell: msys2 {0}
-      run: |
-        set -euo pipefail
-        cd "${{ github.workspace }}/build_sqlcipher"
-        echo "=== Clonando SQLCipher ==="
-        git clone https://github.com/sqlcipher/sqlcipher.git
-        cd sqlcipher
-        git checkout v4.11.0 || git checkout c6e8461bfa0b7317dfd96278dd950b1eb6b21a1a
-        echo "✅ Clone OK"
+          echo "⬇️ Clonando SQLCipher..."
+          git clone https://github.com/sqlcipher/sqlcipher.git
+          cd sqlcipher
 
-    - name: ⚙️ Configurar e compilar SQLCipher
-      shell: msys2 {0}
-      run: |
-        set -euo pipefail
-        cd "${{ github.workspace }}/build_sqlcipher/sqlcipher"
+          echo "🔧 Preparando autotools..."
+          autoreconf -fi
 
-        echo "⚙️ Configurando build..."
-        export CFLAGS="-O2 -DSQLITE_HAS_CODEC -DSQLCIPHER_CRYPTO_OPENSSL \
-        -DSQLITE_TEMP_STORE=2 \
-        -DSQLITE_EXTRA_INIT=sqlcipher_extra_init \
-        -DSQLITE_EXTRA_SHUTDOWN=sqlcipher_extra_shutdown \
-        -I/mingw64/include"
+          echo "⚙️ Configurando build..."
+          export CFLAGS="-O2 -DSQLITE_HAS_CODEC -DSQLCIPHER_CRYPTO_OPENSSL \
+          -DSQLITE_TEMP_STORE=2 -DSQLITE_EXTRA_INIT=sqlcipher_extra_init \
+          -DSQLITE_EXTRA_SHUTDOWN=sqlcipher_extra_shutdown -I/mingw64/include"
+          export LDFLAGS="-L/mingw64/lib -lssl -lcrypto -lz"
 
-        export LDFLAGS="-L/mingw64/lib -lssl -lcrypto -lz"
+          ./configure --enable-shared --enable-static --disable-tcl
+          echo "🧩 Compilando..."
+          make -j$(nproc)
 
-        ./configure --enable-shared --enable-static --disable-tcl --disable-load-extension
-        echo "🧩 Compilando..."
-        make -j$(nproc)
-        echo "✅ Build concluído."
+          echo "✅ Build concluído."
+          mkdir -p ../../output
+          cp .libs/libsqlcipher-0.dll ../../output/ || true
+          cp sqlcipher.exe ../../output/ || true
+          cp /mingw64/bin/libssl-3-x64.dll ../../output/ || true
+          cp /mingw64/bin/libcrypto-3-x64.dll ../../output/ || true
+          cp /mingw64/bin/zlib1.dll ../../output/ || true
+          cp sqlite3.h ../../output/sqlite.h || true
 
-        strip sqlcipher.exe || true
-        strip .libs/libsqlcipher-0.dll || true
+          echo "📦 Empacotando..."
+          cd ../../
+          7z a sqlcipher-win64.zip ./output/*
 
-    - name: 📦 Copiar binários
-      shell: pwsh
-      run: |
-        $root = "${{ github.workspace }}"
-        $src = "$root\\build_sqlcipher\\sqlcipher"
-        $out = "$root\\out"
-
-        Write-Host "📦 Copiando binários..."
-        Copy-Item "$src\\sqlcipher.exe" $out -ErrorAction SilentlyContinue
-        Copy-Item "$src\\.libs\\libsqlcipher-0.dll" $out -ErrorAction SilentlyContinue
-        Copy-Item "$src\\sqlite3.h" $out -ErrorAction SilentlyContinue
-        Copy-Item "$src\\.libs\\libsqlcipher.dll.a" $out -ErrorAction SilentlyContinue
-        Copy-Item "C:\\msys64\\mingw64\\bin\\libcrypto-3-x64.dll" $out -ErrorAction SilentlyContinue
-        Copy-Item "C:\\msys64\\mingw64\\bin\\libssl-3-x64.dll" $out -ErrorAction SilentlyContinue
-        Copy-Item "C:\\msys64\\mingw64\\bin\\zlib1.dll" $out -ErrorAction SilentlyContinue
-
-        Write-Host "✅ Conteúdo final:"
-        Get-ChildItem $out
-
-    - name: 🗜️ Compactar artefato final
-      shell: pwsh
-      run: |
-        $root = "${{ github.workspace }}"
-        $zipPath = "$root\\sqlcipher-win64.zip"
-        $out = "$root\\out"
-
-        Write-Host "🗜️ Compactando artefatos..."
-        Compress-Archive -Path "$out\\*" -DestinationPath $zipPath -Force
-        if (Test-Path $zipPath) {
-          Write-Host "✅ ZIP criado em: $zipPath"
-        } else {
-          Write-Host "❌ Falha: arquivo ZIP não foi gerado!"
-          exit 1
-        }
-
-    - name: 🚀 Upload do artefato
-      uses: actions/upload-artifact@v4
-      with:
-        name: sqlcipher-win64
-        path: ${{ github.workspace }}/sqlcipher-win64.zip
+      - name: 📤 Upload do artefato
+        uses: actions/upload-artifact@v4
+        with:
+          name: sqlcipher-win64
+          path: sqlcipher-win64.zip
