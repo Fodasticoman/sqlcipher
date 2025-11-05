@@ -1,45 +1,83 @@
-set -euo pipefail
+name: Build SQLCipher (Windows)
 
-echo "📁 Criando diretórios..."
-mkdir -p build_sqlcipher
-cd build_sqlcipher
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
 
-echo "⬇️ Clonando SQLCipher..."
-git clone --depth 1 https://github.com/sqlcipher/sqlcipher.git
-cd sqlcipher
+jobs:
+  build-sqlcipher:
+    runs-on: windows-latest
 
-echo "🔍 Verificando script configure..."
-if [ ! -f configure ]; then
-  echo "⚠️ Script configure não encontrado. Gerando com autoreconf..."
-  autoreconf -fi
-fi
+    steps:
+      - name: 🧰 Checkout do repositório
+        uses: actions/checkout@v4
 
-echo "⚙️ Configurando build..."
-# Removidas aspas internas e variáveis limpas para evitar erro TCL
-export CFLAGS=-O2
-export CPPFLAGS=-DSQLITE_HAS_CODEC -DSQLCIPHER_CRYPTO_OPENSSL -DSQLITE_TEMP_STORE=2 -I/mingw64/include
-export LDFLAGS="-L/mingw64/lib -lssl -lcrypto -lz"
+      - name: 🧱 Configurar MSYS2
+        uses: msys2/setup-msys2@v2
+        with:
+          update: true
+          install: >-
+            base-devel
+            mingw-w64-x86_64-gcc
+            mingw-w64-x86_64-openssl
+            mingw-w64-x86_64-zlib
+            mingw-w64-x86_64-pkg-config
+            autoconf
+            automake
+            libtool
+            make
+            zip
+            git
 
-# Executa configure usando bash POSIX
-bash ./configure --enable-shared --enable-static --disable-tcl
+      - name: ⚙️ Compilar SQLCipher
+        shell: msys2 {0}
+        run: |
+          set -euo pipefail
 
-echo "🧩 Compilando..."
-make -j$(nproc)
+          echo "📁 Criando diretórios..."
+          mkdir -p build_sqlcipher
+          cd build_sqlcipher
 
-echo "✅ Build concluído com sucesso."
-mkdir -p ../../output
+          echo "⬇️ Clonando SQLCipher..."
+          git clone --depth 1 https://github.com/sqlcipher/sqlcipher.git
+          cd sqlcipher
 
-echo "📦 Copiando artefatos..."
-cp -f .libs/libsqlcipher-0.dll ../../output/ || true
-cp -f .libs/libsqlcipher.a ../../output/ || true
-cp -f sqlcipher.exe ../../output/ || true
-cp -f sqlite3.h ../../output/sqlite.h || true
-cp -f /mingw64/bin/libssl-3-x64.dll ../../output/ || true
-cp -f /mingw64/bin/libcrypto-3-x64.dll ../../output/ || true
-cp -f /mingw64/bin/zlib1.dll ../../output/ || true
+          echo "🔍 Verificando script configure..."
+          if [ ! -f configure ]; then
+            echo "⚠️ Script configure não encontrado. Gerando com autoreconf..."
+            autoreconf -fi
+          fi
 
-echo "🗜️ Compactando artefatos..."
-cd ../../
-7z a sqlcipher-win64.zip ./output/*
+          echo "⚙️ Configurando build..."
+          export CFLAGS=-O2
+          export CPPFLAGS=-DSQLITE_HAS_CODEC -DSQLCIPHER_CRYPTO_OPENSSL -DSQLITE_TEMP_STORE=2 -I/mingw64/include
+          export LDFLAGS="-L/mingw64/lib -lssl -lcrypto -lz"
 
-echo "✅ Arquivo 'sqlcipher-win64.zip' gerado com sucesso!"
+          bash ./configure --enable-shared --enable-static --disable-tcl
+
+          echo "🧩 Compilando..."
+          make -j$(nproc)
+
+          echo "✅ Build concluído com sucesso."
+          mkdir -p ../../output
+
+          echo "📦 Copiando artefatos..."
+          cp -f .libs/libsqlcipher-0.dll ../../output/ || true
+          cp -f .libs/libsqlcipher.a ../../output/ || true
+          cp -f sqlcipher.exe ../../output/ || true
+          cp -f sqlite3.h ../../output/sqlite.h || true
+          cp -f /mingw64/bin/libssl-3-x64.dll ../../output/ || true
+          cp -f /mingw64/bin/libcrypto-3-x64.dll ../../output/ || true
+          cp -f /mingw64/bin/zlib1.dll ../../output/ || true
+
+          echo "🗜️ Compactando artefatos..."
+          cd ../../
+          7z a sqlcipher-win64.zip ./output/*
+
+      - name: 📤 Upload dos artefatos
+        uses: actions/upload-artifact@v4
+        with:
+          name: sqlcipher-win64
+          path: sqlcipher-win64.zip
