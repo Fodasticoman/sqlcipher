@@ -23,7 +23,7 @@ jobs:
             automake
             libtool
             make
-            7zip
+            p7zip   # ✅ Corrigido (antes era 7zip)
 
       - name: 🧱 Compilar SQLCipher (Release)
         shell: msys2 {0}
