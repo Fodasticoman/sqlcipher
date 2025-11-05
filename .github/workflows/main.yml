@@ -9,30 +9,23 @@ jobs:
     runs-on: windows-latest
 
     steps:
-      - name: 📦 Checkout
-        uses: actions/checkout@v4
-
-      - name: ⚙️ Setup MSYS2
+      - name: 🧰 Instalar dependências
         uses: msys2/setup-msys2@v2
         with:
-          msystem: MINGW64
           update: true
-          install: >-
-            git
-            make
-            autoconf
-            automake
-            libtool
+          install: >
+            base-devel
+            mingw-w64-x86_64-toolchain
             mingw-w64-x86_64-openssl
             mingw-w64-x86_64-zlib
-            mingw-w64-x86_64-gcc
-            mingw-w64-x86_64-binutils
-            mingw-w64-x86_64-7zip
+            zip
+            git
 
-      - name: 🏗️ Build SQLCipher
+      - name: 🧩 Build SQLCipher
         shell: msys2 {0}
         run: |
           set -euo pipefail
+          export MSYS_NO_PATHCONV=1
           
           echo "📁 Criando diretórios..."
           mkdir -p build_sqlcipher
@@ -42,22 +35,32 @@ jobs:
           git clone --depth 1 https://github.com/sqlcipher/sqlcipher.git
           cd sqlcipher
           
-          echo "🔍 Preparando script configure..."
-          autoreconf -fi || true
-
           echo "⚙️ Configurando build..."
           export CFLAGS="-O2 -D_FILE_OFFSET_BITS=64"
           export CPPFLAGS="-DSQLITE_HAS_CODEC -DSQLCIPHER_CRYPTO_OPENSSL -DSQLITE_TEMP_STORE=2 -D_WIN32_WINNT=0x0601 -I/mingw64/include"
           export LDFLAGS="-L/mingw64/lib -lssl -lcrypto -lz -static-libgcc -static-libstdc++"
+          
+          # Forçar valores de verificação de funções não suportadas no Windows
+          export ac_cv_func_pread=no
+          export ac_cv_func_pwrite=no
+          export ac_cv_func_fdatasync=no
+          export ac_cv_func_dlopen=no
+          export ac_cv_header_dlfcn_h=no
+          export ac_cv_func_gmtime_r=no
+          export ac_cv_func_localtime_r=no
+          export ac_cv_func_localtime_s=no
+          export ac_cv_func_strchrnul=no
+          export ac_cv_func_pread64=no
+          export ac_cv_func_pwrite64=no
 
           ./configure --enable-shared --enable-static --disable-tcl || (cat config.log && false)
-
-          echo "🧩 Compilando..."
+          
+          echo "🧱 Compilando..."
           make -j$(nproc)
-
+          
           echo "✅ Build concluído com sucesso."
           mkdir -p ../../output
-
+          
           echo "📦 Copiando artefatos..."
           cp -f .libs/libsqlcipher-0.dll ../../output/ || true
           cp -f .libs/libsqlcipher.a ../../output/ || true
@@ -66,12 +69,12 @@ jobs:
           cp -f /mingw64/bin/libssl-3-x64.dll ../../output/ || true
           cp -f /mingw64/bin/libcrypto-3-x64.dll ../../output/ || true
           cp -f /mingw64/bin/zlib1.dll ../../output/ || true
-
+          
           echo "🗜️ Compactando artefatos..."
           cd ../../
           7z a sqlcipher-win64.zip ./output/*
 
-      - name: 📤 Upload artifacts
+      - name: ⬆️ Upload Artefatos
         uses: actions/upload-artifact@v4
         with:
           name: sqlcipher-win64
